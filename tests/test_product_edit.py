@@ -1,4 +1,3 @@
-# tests/test_product_edit.py
 import pytest
 from uuid import uuid4
 from unittest.mock import patch

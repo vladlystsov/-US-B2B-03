@@ -1,4 +1,3 @@
-# src/models/product.py (ещё раз проверь)
 from sqlalchemy import Column, String, Text, Boolean, DateTime, JSON
 from sqlalchemy.sql import func
 import uuid

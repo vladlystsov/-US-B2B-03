@@ -1,4 +1,3 @@
-# tests/conftest.py
 import sys
 from pathlib import Path
 
@@ -16,11 +15,9 @@ from fastapi.testclient import TestClient
 from src.database import Base, get_db
 from src.main import app
 
-# Импортируем ВСЕ модели, чтобы Base знал о них
-from src.models.product import Product  # noqa
+from src.models.product import Product
 
 
-# Используем файловую БД для тестов (проще чем in-memory)
 TEST_DATABASE_URL = "sqlite:///./test.db"
 
 
@@ -28,10 +25,10 @@ TEST_DATABASE_URL = "sqlite:///./test.db"
 def engine():
     """Создаём engine один раз для всей сессии"""
     engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
-    Base.metadata.drop_all(bind=engine)  # Очищаем перед тестами
-    Base.metadata.create_all(bind=engine)  # Создаём таблицы
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
     yield engine
-    Base.metadata.drop_all(bind=engine)  # Очищаем после тестов
+    Base.metadata.drop_all(bind=engine)
 
 
 @pytest.fixture

@@ -1,4 +1,3 @@
-# src/services/event_service.py
 import httpx
 import structlog
 from uuid import UUID
@@ -13,7 +12,6 @@ def send_edited_event(product_id: UUID, seller_id: UUID, changes: dict):
     """
     import asyncio
     try:
-        # Для синхронной отправки
         with httpx.Client() as client:
             response = client.post(
                 f"{settings.MODERATION_SERVICE_URL}/api/v1/events",

@@ -1,4 +1,3 @@
-# src/api/skus.py
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from uuid import UUID
