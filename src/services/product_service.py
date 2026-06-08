@@ -136,3 +136,30 @@ class ProductService:
         
         updated_sku["product_id"] = str(found_product.id)
         return updated_sku
+    
+    def delete_product(self, product_id: str, seller_id: str) -> None:
+        from src.services.event_service import send_deleted_event, send_product_deleted_to_b2c
+        
+        product = self.db.query(Product).filter(
+            Product.id == product_id
+        ).first()
+        
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+        
+        if product.seller_id != seller_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        if product.deleted:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "ALREADY_DELETED", "message": "Product already deleted"}
+            )
+        
+        product.deleted = True
+        self.db.commit()
+        
+        sku_ids = [sku.get("id") for sku in product.skus if sku.get("id")]
+        
+        send_deleted_event(product_id=product.id, seller_id=seller_id)
+        send_product_deleted_to_b2c(product_id=product.id, sku_ids=sku_ids)
