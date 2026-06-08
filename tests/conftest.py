@@ -1,3 +1,4 @@
+# tests/conftest.py
 import sys
 from pathlib import Path
 
@@ -8,11 +9,63 @@ if root_path not in sys.path:
 import pytest
 from jose import jwt
 from uuid import uuid4
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from fastapi.testclient import TestClient
+
+from src.database import Base, get_db
+from src.main import app
+
+# Импортируем ВСЕ модели, чтобы Base знал о них
+from src.models.product import Product  # noqa
+
+
+# Используем файловую БД для тестов (проще чем in-memory)
+TEST_DATABASE_URL = "sqlite:///./test.db"
+
+
+@pytest.fixture(scope="session")
+def engine():
+    """Создаём engine один раз для всей сессии"""
+    engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
+    Base.metadata.drop_all(bind=engine)  # Очищаем перед тестами
+    Base.metadata.create_all(bind=engine)  # Создаём таблицы
+    yield engine
+    Base.metadata.drop_all(bind=engine)  # Очищаем после тестов
+
+
+@pytest.fixture
+def db_session(engine):
+    """Создаёт сессию тестовой БД"""
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    db = TestingSessionLocal()
+    try:
+        yield db
+    finally:
+        db.rollback()
+        db.close()
+
+
+@pytest.fixture
+def client(db_session):
+    """Клиент, который использует ту же БД, что и фикстура"""
+    
+    def override_get_db():
+        try:
+            yield db_session
+        finally:
+            pass
+    
+    app.dependency_overrides[get_db] = override_get_db
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
 
 @pytest.fixture
 def valid_jwt():
     payload = {"sub": str(uuid4())}
     return jwt.encode(payload, "your-secret-key-change-in-production", algorithm="HS256")
+
 
 @pytest.fixture
 def valid_jwt_with_fixed_id():

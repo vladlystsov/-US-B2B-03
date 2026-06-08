@@ -1,6 +1,7 @@
 # src/services/event_service.py
 import httpx
 import structlog
+from uuid import UUID
 from src.config import settings
 
 logger = structlog.get_logger(__name__)
@@ -28,4 +29,3 @@ def send_edited_event(product_id: UUID, seller_id: UUID, changes: dict):
             logger.info("product_edited_event_sent", product_id=str(product_id))
     except Exception as e:
         logger.error("failed_to_send_edited_event", product_id=str(product_id), error=str(e))
-        # В реальном проекте добавить retry

@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from src.api import products
+from src.api import skus
 from src.database import Base, engine
 from src.exceptions import register_exception_handlers
 

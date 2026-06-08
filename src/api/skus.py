@@ -1,3 +1,4 @@
+# src/api/skus.py
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from uuid import UUID
@@ -21,14 +22,14 @@ def update_sku(
     service = ProductService(db)
     
     updated_sku = service.update_sku(
-        sku_id=sku_id,
-        seller_id=seller_id,
+        sku_id=str(sku_id),
+        seller_id=str(seller_id),
         update_data=sku_data.model_dump(exclude_unset=True)
     )
     
     send_edited_event(
-        product_id=updated_sku.product_id,
-        seller_id=seller_id,
+        product_id=updated_sku["product_id"],
+        seller_id=str(seller_id),
         changes={"sku_updated": str(sku_id)}
     )
     
