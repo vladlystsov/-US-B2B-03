@@ -1,4 +1,3 @@
-# src/services/product_service.py
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from src.models.product import Product
@@ -33,7 +32,7 @@ class ProductService:
         
         product = Product(
             seller_id=seller_id,
-            category_id=category_id_str,  # явно в строку
+            category_id=category_id_str,
             title=product_data.title,
             slug=slug,
             description=product_data.description,
@@ -62,12 +61,11 @@ class ProductService:
     def update_product(self, product_id: str, seller_id: str, update_data: dict) -> Product:
         product = self.db.query(Product).filter(
             Product.id == product_id
-        ).first()  # Сначала находим товар без фильтра по seller_id
+        ).first()
 
         if not product:
             raise HTTPException(status_code=404, detail="Product not found")
         
-        # Проверяем права доступа
         if product.seller_id != seller_id:
             raise HTTPException(status_code=403, detail="Access denied: you are not the owner of this product")
 
