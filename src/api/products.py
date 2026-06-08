@@ -48,3 +48,13 @@ def update_product(
     )
     
     return updated_product
+
+@router.delete("/{product_id}", status_code=204)
+def delete_product(
+    product_id: UUID,
+    seller_id: UUID = Depends(get_current_seller_id),
+    db: Session = Depends(get_db)
+):
+    service = ProductService(db)
+    service.delete_product(product_id=str(product_id), seller_id=str(seller_id))
+    return None
