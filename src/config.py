@@ -13,4 +13,6 @@ class Settings:
     
     DEBUG = os.getenv("DEBUG", "True").lower() == "true"
 
+    B2C_SERVICE_URL = os.getenv("B2C_SERVICE_URL", "http://localhost:8002")
+
 settings = Settings()
