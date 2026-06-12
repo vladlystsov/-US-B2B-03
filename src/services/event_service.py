@@ -8,9 +8,7 @@ logger = structlog.get_logger(__name__)
 
 
 def send_edited_event(product_id: str, seller_id: str, changes: dict, old_data: dict = None):
-    """
-    Отправка события PRODUCT_EDITED в Moderation Service
-    """
+    """Событие PRODUCT_EDITED → Moderation Service"""
     try:
         with httpx.Client() as client:
             response = client.post(
@@ -35,16 +33,18 @@ def send_edited_event(product_id: str, seller_id: str, changes: dict, old_data: 
 
 
 def send_deleted_event(product_id: str, seller_id: str) -> None:
-    """Событие DELETED → Moderation Service"""
+    """Событие PRODUCT_DELETED → Moderation Service (при удалении товара)"""
     try:
         with httpx.Client() as client:
             response = client.post(
-                f"{settings.MODERATION_SERVICE_URL}/api/v1/b2b/events",
+                f"{settings.MODERATION_SERVICE_URL}/api/v1/b2b/events",  # ✅ исправлено
                 json={
-                    "event_type": "DELETED",
-                    "product_id": product_id,
-                    "seller_id": seller_id,
-                    "timestamp": datetime.utcnow().isoformat()
+                    "event_type": "PRODUCT_DELETED",  # ✅ исправлено
+                    "idempotency_key": str(uuid.uuid4()),  # ✅ добавлено
+                    "occurred_at": datetime.utcnow().isoformat(),  # ✅ добавлено
+                    "payload": {  # ✅ обёрнуто в payload
+                        "product_id": str(product_id)
+                    }
                 },
                 timeout=5.0
             )
@@ -59,11 +59,15 @@ def send_product_deleted_to_b2c(product_id: str, sku_ids: list) -> None:
     try:
         with httpx.Client() as client:
             response = client.post(
-                f"{settings.B2C_SERVICE_URL}/api/v1/b2b/events/product-deleted",
+                f"{settings.B2C_SERVICE_URL}/api/v1/b2b/events",  # ✅ исправлен путь
                 json={
-                    "product_id": product_id,
-                    "sku_ids": sku_ids,
-                    "timestamp": datetime.utcnow().isoformat()
+                    "event_type": "PRODUCT_DELETED",  # ✅ добавлен event_type
+                    "idempotency_key": str(uuid.uuid4()),  # ✅ добавлено
+                    "occurred_at": datetime.utcnow().isoformat(),  # ✅ добавлено
+                    "payload": {  # ✅ обёрнуто в payload
+                        "product_id": str(product_id),
+                        "sku_ids": sku_ids
+                    }
                 },
                 timeout=5.0
             )
@@ -84,8 +88,8 @@ def send_created_event(product_id: str, seller_id: str, sku: dict) -> None:
                     "idempotency_key": str(uuid.uuid4()),
                     "occurred_at": datetime.utcnow().isoformat(),
                     "payload": {
-                        "product_id": product_id,
-                        "seller_id": seller_id,
+                        "product_id": str(product_id),
+                        "seller_id": str(seller_id),
                         "sku": sku
                     }
                 },
