@@ -11,7 +11,7 @@ from src.services.event_service import send_edited_event
 router = APIRouter(prefix="/api/v1/skus", tags=["SKUs"])
 
 
-@router.put("/{sku_id}", response_model=SKUResponse)
+@router.patch("/{sku_id}", response_model=SKUResponse)
 def update_sku(
     sku_id: UUID,
     sku_data: SKUUpdateRequest,
