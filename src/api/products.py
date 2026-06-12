@@ -11,6 +11,7 @@ from src.schemas.product import (
     CatalogResponse,
     ProductCatalogItem,
 )
+from src.schemas.seller_products import SellerProductsResponse, SellerProductItem
 from src.services.product_service import ProductService
 from src.dependencies.auth import get_current_seller_id
 from typing import List, Optional
@@ -79,6 +80,7 @@ def get_products(
     search: Optional[str] = None,
     sort: Optional[str] = None,
     ids: Optional[str] = None,
+    status: Optional[str] = None,
 ):
     is_b2c_mode = x_service_key == settings.B2C_SERVICE_KEY if x_service_key else False
 
@@ -109,8 +111,19 @@ def get_products(
             seller_id_str = payload.get("sub")
             if seller_id_str:
                 service = ProductService(db)
-                products = service.get_seller_products(seller_id_str, skip=offset, limit=limit)
-                return [ProductResponse.model_validate(p) for p in products]
+                items, total = service.get_seller_products_list(
+                    seller_id=seller_id_str,
+                    limit=limit,
+                    offset=offset,
+                    status=status,
+                    search=search
+                )
+                return SellerProductsResponse(
+                    items=items,
+                    total_count=total,
+                    limit=limit,
+                    offset=offset
+                )
         except Exception:
             pass
 
