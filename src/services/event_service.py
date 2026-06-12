@@ -1,33 +1,37 @@
 import httpx
 import structlog
-from uuid import UUID
-from datetime import datetime
+import uuid
 from src.config import settings
+from datetime import datetime
 
 logger = structlog.get_logger(__name__)
 
 
-def send_edited_event(product_id: UUID, seller_id: UUID, changes: dict):
+def send_edited_event(product_id: str, seller_id: str, changes: dict, old_data: dict = None):
     """
-    Отправка события EDITED в Moderation Service (синхронно)
+    Отправка события PRODUCT_EDITED в Moderation Service
     """
-    import asyncio
     try:
         with httpx.Client() as client:
             response = client.post(
-                f"{settings.MODERATION_SERVICE_URL}/api/v1/events",
+                f"{settings.MODERATION_SERVICE_URL}/api/v1/b2b/events",
                 json={
-                    "event_type": "EDITED",
-                    "product_id": str(product_id),
-                    "seller_id": str(seller_id),
-                    "changes": changes
+                    "event_type": "PRODUCT_EDITED",
+                    "idempotency_key": str(uuid.uuid4()),
+                    "occurred_at": datetime.utcnow().isoformat(),
+                    "payload": {
+                        "product_id": str(product_id),
+                        "seller_id": str(seller_id),
+                        "json_before": old_data or {},
+                        "json_after": changes
+                    }
                 },
                 timeout=5.0
             )
             response.raise_for_status()
-            logger.info("product_edited_event_sent", product_id=str(product_id))
+            logger.info("product_edited_event_sent", product_id=product_id)
     except Exception as e:
-        logger.error("failed_to_send_edited_event", product_id=str(product_id), error=str(e))
+        logger.error("failed_to_send_edited_event", product_id=product_id, error=str(e))
 
 
 def send_deleted_event(product_id: str, seller_id: str) -> None:
@@ -35,7 +39,7 @@ def send_deleted_event(product_id: str, seller_id: str) -> None:
     try:
         with httpx.Client() as client:
             response = client.post(
-                f"{settings.MODERATION_SERVICE_URL}/api/v1/events",
+                f"{settings.MODERATION_SERVICE_URL}/api/v1/b2b/events",
                 json={
                     "event_type": "DELETED",
                     "product_id": product_id,
@@ -55,7 +59,7 @@ def send_product_deleted_to_b2c(product_id: str, sku_ids: list) -> None:
     try:
         with httpx.Client() as client:
             response = client.post(
-                f"{settings.B2C_SERVICE_URL}/api/v1/events/product-deleted",
+                f"{settings.B2C_SERVICE_URL}/api/v1/b2b/events/product-deleted",
                 json={
                     "product_id": product_id,
                     "sku_ids": sku_ids,
@@ -67,3 +71,27 @@ def send_product_deleted_to_b2c(product_id: str, sku_ids: list) -> None:
             logger.info("product_deleted_b2c_event_sent", product_id=product_id, sku_count=len(sku_ids))
     except Exception as e:
         logger.error("failed_to_send_b2c_event", product_id=product_id, error=str(e))
+
+
+def send_created_event(product_id: str, seller_id: str, sku: dict) -> None:
+    """Событие CREATED → Moderation Service (при первом SKU)"""
+    try:
+        with httpx.Client() as client:
+            response = client.post(
+                f"{settings.MODERATION_SERVICE_URL}/api/v1/b2b/events",
+                json={
+                    "event_type": "CREATED",
+                    "idempotency_key": str(uuid.uuid4()),
+                    "occurred_at": datetime.utcnow().isoformat(),
+                    "payload": {
+                        "product_id": product_id,
+                        "seller_id": seller_id,
+                        "sku": sku
+                    }
+                },
+                timeout=5.0
+            )
+            response.raise_for_status()
+            logger.info("product_created_event_sent", product_id=product_id, sku_code=sku.get("sku_code"))
+    except Exception as e:
+        logger.error("failed_to_send_created_event", product_id=product_id, error=str(e))

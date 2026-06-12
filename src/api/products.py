@@ -25,7 +25,7 @@ def create_product(
     product = service.create_product(str(seller_id), product_data)
     return product
 
-@router.put("/{product_id}", response_model=ProductResponse)
+@router.patch("/{product_id}", response_model=ProductResponse)
 def update_product(
     product_id: UUID,
     product_data: ProductUpdateRequest,

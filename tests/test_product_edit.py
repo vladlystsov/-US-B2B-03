@@ -24,7 +24,7 @@ class TestProductEdit:
         db_session.commit()
         
         with patch('src.services.event_service.send_edited_event') as mock_event:
-            response = client.put(
+            response = client.patch(
                 f"/api/v1/products/{product.id}",
                 json={
                     "title": "Updated Title",
@@ -58,7 +58,7 @@ class TestProductEdit:
         db_session.commit()
         
         with patch('src.services.event_service.send_edited_event') as mock_event:
-            response = client.put(
+            response = client.patch(
                 f"/api/v1/products/{product.id}",
                 json={
                     "title": "Fixed Title",
@@ -89,7 +89,7 @@ class TestProductEdit:
         db_session.add(product)
         db_session.commit()
         
-        response = client.put(
+        response = client.patch(
             f"/api/v1/products/{product.id}",
             json={"title": "Try to edit"},
             headers={"Authorization": f"Bearer {token}"}
@@ -114,7 +114,7 @@ class TestProductEdit:
         db_session.add(product)
         db_session.commit()
         
-        response = client.put(
+        response = client.patch(
             f"/api/v1/products/{product.id}",
             json={"title": "Hijack Attempt"},
             headers={"Authorization": f"Bearer {other_token}"}
@@ -138,7 +138,7 @@ class TestProductEdit:
         db_session.add(product)
         db_session.commit()
         
-        response = client.put(
+        response = client.patch(
             f"/api/v1/products/{product.id}",
             json={"description": "Updated description"},
             headers={"Authorization": f"Bearer {token}"}
