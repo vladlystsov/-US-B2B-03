@@ -304,6 +304,45 @@ class ProductService:
             Product.seller_id == seller_id,
             Product.deleted == False
         ).offset(skip).limit(limit).all()
+
+    def get_seller_products_list(
+        self,
+        seller_id: str,
+        limit: int = 20,
+        offset: int = 0,
+        status: str = None,
+        search: str = None
+    ) -> tuple[list[dict], int]:
+        """Seller cabinet: all statuses, including deleted, with skus_count and total_active_quantity"""
+        query = self.db.query(Product).filter(
+            Product.seller_id == seller_id
+        )
+
+        if status:
+            query = query.filter(Product.status == status)
+
+        if search:
+            search_filter = f"%{search}%"
+            query = query.filter(Product.title.ilike(search_filter))
+
+        total = query.count()
+        products = query.order_by(Product.created_at.desc()).offset(offset).limit(limit).all()
+
+        items = []
+        for p in products:
+            skus = p.skus or []
+            items.append({
+                "id": p.id,
+                "title": p.title,
+                "status": p.status,
+                "category": {"id": p.category_id, "name": "Unknown"},
+                "images": p.images,
+                "skus_count": len(skus),
+                "total_active_quantity": sum(sku.get("active_quantity", 0) for sku in skus),
+                "created_at": p.created_at
+            })
+
+        return items, total
     
     def get_product_by_id(self, product_id: str, seller_id: str, is_b2c_mode: bool = False) -> dict | None:
         """Получить товар с учётом режима доступа"""

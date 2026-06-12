@@ -152,6 +152,7 @@ class TestProductDelete:
         assert response.status_code == 403
 
     def test_deleted_product_not_in_seller_list(self, client, db_session, valid_jwt_with_fixed_id):
+        """Deleted products are visible in seller list with deleted=true (canon B2B-11)"""
         token, seller_id = valid_jwt_with_fixed_id
         
         active_product = Product(
@@ -172,7 +173,7 @@ class TestProductDelete:
             seller_id=str(seller_id),
             category_id=str(uuid4()),
             title="Deleted Product",
-            description="Should NOT appear",
+            description="Visible with deleted=true",
             status=Product.Status.MODERATED,
             deleted=True,
             images=[],
@@ -188,11 +189,7 @@ class TestProductDelete:
         
         assert response.status_code == 200
         products = response.json()
-        
-        if "items" in products:
-            product_titles = [p["title"] for p in products["items"]]
-        else:
-            product_titles = [p["title"] for p in products]
+        product_titles = [p["title"] for p in products["items"]]
         
         assert "Active Product" in product_titles
-        assert "Deleted Product" not in product_titles
+        assert "Deleted Product" in product_titles
