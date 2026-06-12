@@ -15,4 +15,6 @@ class Settings:
 
     B2C_SERVICE_URL = os.getenv("B2C_SERVICE_URL", "http://localhost:8002")
 
+    B2C_SERVICE_KEY = os.getenv("B2C_SERVICE_KEY", "b2c-secret-key-123")
+
 settings = Settings()

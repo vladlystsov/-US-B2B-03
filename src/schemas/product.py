@@ -80,3 +80,22 @@ class SKUResponse(BaseModel):
     updated_at: datetime
     
     model_config = {"from_attributes": True}
+
+
+class BlockingReasonSchema(BaseModel):
+    id: UUID
+    title: str
+    description: str
+
+class FieldReportSchema(BaseModel):
+    field: str
+    message: str
+
+class SKUForSellerResponse(SKUResponse):
+    cost_price: int = 0  # в копейках
+    reserved_quantity: int = 0
+
+class ProductDetailResponse(ProductResponse):
+    blocking_reason: Optional[BlockingReasonSchema] = None
+    field_reports: Optional[List[FieldReportSchema]] = None
+    skus: List[SKUForSellerResponse]

@@ -1,15 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
 from uuid import UUID
+from src.config import settings
 from src.database import get_db
 from src.schemas.product import (
     ProductCreateRequest, 
     ProductResponse, 
-    ProductUpdateRequest
+    ProductUpdateRequest,
+    ProductDetailResponse
 )
 from src.services.product_service import ProductService
 from src.dependencies.auth import get_current_seller_id
-from typing import List
+from typing import List, Optional
 
 router = APIRouter(prefix="/api/v1/products", tags=["Products"])
 
@@ -70,3 +72,34 @@ def get_products(
     service = ProductService(db)
     products = service.get_seller_products(str(seller_id), skip=skip, limit=limit)
     return products
+
+@router.get("/{product_id}", response_model=ProductDetailResponse)
+def get_product(
+    product_id: UUID,
+    seller_id: UUID = Depends(get_current_seller_id),
+    db: Session = Depends(get_db),
+    x_service_key: Optional[str] = Header(None)
+):
+    """
+    Получить карточку товара.
+    - Для продавца: полные данные + cost_price/reserved_quantity + причины блокировки
+    - Для B2C (X-Service-Key): только публичные поля
+    - При статусе BLOCKED: возвращает blocking_reason и field_reports
+    """
+    service = ProductService(db)
+    
+    is_b2c_mode = x_service_key == settings.B2C_SERVICE_KEY if x_service_key else False
+    
+    product = service.get_product_by_id(
+        str(product_id),
+        str(seller_id),
+        is_b2c_mode=is_b2c_mode
+    )
+    
+    if not product:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "NOT_FOUND", "message": "Product not found"}
+        )
+    
+    return product
