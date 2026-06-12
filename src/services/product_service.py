@@ -288,7 +288,7 @@ class ProductService:
         search: str = None,
         sort: str = None,
         ids: list[str] = None
-    ) -> tuple[list[Product], int]:
+    ) -> tuple[list[dict], int]:
         """B2C catalog: only MODERATED, not deleted, at least one SKU with active_quantity > 0"""
         query = self.db.query(Product).filter(
             Product.status == Product.Status.MODERATED,
@@ -308,25 +308,26 @@ class ProductService:
                 (Product.description.ilike(search_filter))
             )
 
-        total = query.count()
+        all_products = query.all()
+
+        visible = [p for p in all_products if self._has_active_sku(p)]
 
         if sort == "price_asc":
-            query = query.order_by(Product.created_at.asc())
+            visible.sort(key=lambda p: self._min_sku_price(p))
         elif sort == "price_desc":
-            query = query.order_by(Product.created_at.desc())
+            visible.sort(key=lambda p: self._min_sku_price(p), reverse=True)
         elif sort == "date_desc":
-            query = query.order_by(Product.created_at.desc())
-        else:
-            query = query.order_by(Product.created_at.desc())
+            visible.sort(key=lambda p: p.created_at or "", reverse=True)
 
-        products = query.offset(offset).limit(limit).all()
+        total = len(visible)
+        paginated = visible[offset:offset + limit]
 
-        visible = []
-        for p in products:
-            if self._has_active_sku(p):
-                visible.append(p)
+        return paginated, total
 
-        return visible, total
+    def _min_sku_price(self, product: Product) -> float:
+        """Get minimum price from active SKUs"""
+        prices = [s.get("price", 0) for s in (product.skus or []) if s.get("active_quantity", 0) > 0]
+        return min(prices) if prices else 0
 
     def _has_active_sku(self, product: Product) -> bool:
         """Check if at least one SKU has active_quantity > 0"""
@@ -355,7 +356,7 @@ class ProductService:
             "title": product.title,
             "description": product.description,
             "status": product.status,
-            "category_id": product.category_id,
+            "category": {"id": product.category_id, "name": "Unknown"},
             "images": product.images,
             "characteristics": product.characteristics,
             "skus": public_skus

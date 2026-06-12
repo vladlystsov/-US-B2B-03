@@ -121,12 +121,16 @@ class SKUCatalogResponse(BaseModel):
     characteristics: List[Any] = []
 
 
+class CategoryBrief(BaseModel):
+    id: UUID
+    name: str = "Unknown"
+
 class ProductCatalogItem(BaseModel):
     id: UUID
     title: str
     description: str
     status: str
-    category_id: Optional[UUID] = None
+    category: Optional[CategoryBrief] = None
     images: List[Any] = []
     characteristics: List[Any] = []
     skus: List[SKUCatalogResponse] = []
