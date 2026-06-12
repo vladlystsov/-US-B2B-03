@@ -1,6 +1,5 @@
 import pytest
 from uuid import uuid4
-from datetime import datetime
 
 from src.models.product import Product
 from src.config import settings
@@ -35,9 +34,10 @@ class TestReserve:
         db_session.commit()
 
         response = client.post(
-            "/api/v1/reserve",
+            "/api/v1/inventory/reserve",
             json={
                 "idempotency_key": str(uuid4()),
+                "order_id": str(uuid4()),
                 "items": [{"sku_id": sku_id, "quantity": 3}]
             },
             headers={"X-Service-Key": settings.B2C_SERVICE_KEY}
@@ -56,7 +56,7 @@ class TestReserve:
         assert sku["reserved_quantity"] == 3
 
     def test_partial_insufficient_stock_returns_409_all_rollback(self, client, db_session):
-        """One SKU insufficient → 409, nothing reserved"""
+        """One SKU insufficient -> 409, nothing reserved"""
         sku_id = str(uuid4())
         product = Product(
             id=str(uuid4()),
@@ -82,26 +82,25 @@ class TestReserve:
         db_session.commit()
 
         response = client.post(
-            "/api/v1/reserve",
+            "/api/v1/inventory/reserve",
             json={
                 "idempotency_key": str(uuid4()),
+                "order_id": str(uuid4()),
                 "items": [{"sku_id": sku_id, "quantity": 5}]
             },
             headers={"X-Service-Key": settings.B2C_SERVICE_KEY}
         )
 
-        assert response.status_code == 200
+        assert response.status_code == 409
         data = response.json()
-        assert data["reserved"] is False
-        assert len(data["failed_items"]) == 1
-        assert data["failed_items"][0]["reason"] == "INSUFFICIENT_STOCK"
+        assert data["code"] == "PARTIAL_INSUFFICIENT_STOCK"
 
         db_session.refresh(product)
         assert product.skus[0]["active_quantity"] == 2
         assert product.skus[0]["reserved_quantity"] == 0
 
     def test_idempotent_reserve_returns_same_result(self, client, db_session):
-        """Same idempotency_key → same result without double deduction"""
+        """Same idempotency_key -> same result without double deduction"""
         sku_id = str(uuid4())
         product = Product(
             id=str(uuid4()),
@@ -129,9 +128,10 @@ class TestReserve:
         idempotency_key = str(uuid4())
 
         response1 = client.post(
-            "/api/v1/reserve",
+            "/api/v1/inventory/reserve",
             json={
                 "idempotency_key": idempotency_key,
+                "order_id": str(uuid4()),
                 "items": [{"sku_id": sku_id, "quantity": 3}]
             },
             headers={"X-Service-Key": settings.B2C_SERVICE_KEY}
@@ -139,9 +139,10 @@ class TestReserve:
         assert response1.status_code == 200
 
         response2 = client.post(
-            "/api/v1/reserve",
+            "/api/v1/inventory/reserve",
             json={
                 "idempotency_key": idempotency_key,
+                "order_id": str(uuid4()),
                 "items": [{"sku_id": sku_id, "quantity": 3}]
             },
             headers={"X-Service-Key": settings.B2C_SERVICE_KEY}
@@ -180,16 +181,17 @@ class TestReserve:
         db_session.commit()
 
         client.post(
-            "/api/v1/reserve",
+            "/api/v1/inventory/reserve",
             json={
                 "idempotency_key": str(uuid4()),
+                "order_id": str(uuid4()),
                 "items": [{"sku_id": sku_id, "quantity": 3}]
             },
             headers={"X-Service-Key": settings.B2C_SERVICE_KEY}
         )
 
         response = client.post(
-            "/api/v1/unreserve",
+            "/api/v1/inventory/unreserve",
             json={
                 "order_id": str(uuid4()),
                 "items": [{"sku_id": sku_id, "quantity": 2}]
@@ -205,11 +207,12 @@ class TestReserve:
         assert product.skus[0]["reserved_quantity"] == 1
 
     def test_missing_service_key_returns_401(self, client, db_session):
-        """No X-Service-Key → 401"""
+        """No X-Service-Key -> 401"""
         response = client.post(
-            "/api/v1/reserve",
+            "/api/v1/inventory/reserve",
             json={
                 "idempotency_key": str(uuid4()),
+                "order_id": str(uuid4()),
                 "items": [{"sku_id": str(uuid4()), "quantity": 1}]
             }
         )

@@ -1,46 +1,50 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from uuid import UUID
+from datetime import datetime
 
 
 class ReserveItem(BaseModel):
-    sku_id: str
+    sku_id: UUID
     quantity: int = Field(..., gt=0)
 
 
 class ReserveRequest(BaseModel):
-    idempotency_key: str
+    idempotency_key: UUID
+    order_id: UUID
     items: List[ReserveItem]
 
 
-class ReserveResponseItem(BaseModel):
-    sku_id: str
-    reserved_quantity: int
-    remaining_stock: int
-
-
 class ReserveSuccessResponse(BaseModel):
-    reserved: bool = True
-    items: List[ReserveResponseItem]
+    order_id: UUID
+    status: str = "RESERVED"
+    reserved_at: datetime
 
 
 class ReserveFailedItem(BaseModel):
-    sku_id: str
+    sku_id: UUID
     requested: int
     available: int
     reason: str
 
 
-class ReserveFailResponse(BaseModel):
-    reserved: bool = False
-    failed_items: List[ReserveFailedItem]
-
-
 class UnreserveItem(BaseModel):
-    sku_id: str
+    sku_id: UUID
     quantity: int = Field(..., gt=0)
 
 
 class UnreserveRequest(BaseModel):
-    order_id: str
+    order_id: UUID
     items: List[UnreserveItem]
+
+
+class UnreserveResponse(BaseModel):
+    order_id: UUID
+    status: str = "UNRESERVED"
+    processed_at: datetime
+
+
+class ErrorResponse(BaseModel):
+    code: str
+    message: str
+    details: Optional[Dict[str, Any]] = None

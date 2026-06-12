@@ -1,34 +1,51 @@
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, status, Header, Response, BackgroundTasks
 from sqlalchemy.orm import Session
-from typing import Optional
-
-from src.database import get_db
-from src.config import settings
+from src.database import get_db, SessionLocal
 from src.schemas.moderation import ModerationEventRequest
 from src.services.moderation_service import apply_moderation_decision
-
-router = APIRouter(prefix="/api/v1/events", tags=["Moderation Events"])
-
-
-def verify_service_key(x_service_key: Optional[str] = Header(None)):
-    if not x_service_key or x_service_key != settings.MODERATION_SERVICE_KEY:
-        raise HTTPException(
-            status_code=401,
-            detail={"code": "UNAUTHORIZED", "message": "Invalid or missing X-Service-Key"}
-        )
-    return True
+from src.services.b2c_dispatcher import b2c_dispatcher
+from src.config import settings
 
 
-@router.post("/moderation")
+router = APIRouter(prefix="/api/v1", tags=["B2B: Moderation Events"])
+
+
+def dispatch_b2c_task():
+    db = SessionLocal()
+    try:
+        b2c_dispatcher.send_pending_events(db)
+    finally:
+        db.close()
+
+
+@router.post(
+    "/moderation/events",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Приём событий от Moderation Service"
+)
 def handle_moderation_event(
     payload: ModerationEventRequest,
+    response: Response,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    _: bool = Depends(verify_service_key)
+    x_service_key: str | None = Header(None, alias="X-Service-Key")
 ):
+    if not x_service_key or x_service_key != settings.MODERATION_SERVICE_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid X-Service-Key"
+        )
+
     try:
-        result = apply_moderation_decision(db, payload)
-        return {"ok": True, "status": result["status"]}
+        result = apply_moderation_decision(db, payload, sender_service="moderation")
+
+        if result["status"] == "duplicate":
+            response.headers["X-Idempotent-Replay"] = "true"
+
+        background_tasks.add_task(dispatch_b2c_task)
+
+        return None
     except ValueError as e:
-        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": str(e)})
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Товар не найден")
     except Exception:
-        raise HTTPException(status_code=500, detail={"code": "INTERNAL_ERROR", "message": "Internal server error"})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")

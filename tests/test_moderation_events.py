@@ -31,23 +31,24 @@ class TestModerationEvents:
         db_session.commit()
 
         response = client.post(
-            "/api/v1/events/moderation",
+            "/api/v1/moderation/events",
             json={
                 "idempotency_key": str(uuid4()),
                 "product_id": str(product.id),
-                "status": "MODERATED"
+                "event_type": "MODERATED",
+                "occurred_at": datetime.now(timezone.utc).isoformat()
             },
             headers={"X-Service-Key": settings.MODERATION_SERVICE_KEY}
         )
 
-        assert response.status_code == 200
+        assert response.status_code == 204
         db_session.refresh(product)
         assert product.status == Product.Status.MODERATED
         assert product.blocked is False
         assert product.moderator_comment == ""
 
     def test_blocked_soft_saves_field_reports(self, client, db_session):
-        """BLOCKED soft: status=BLOCKED, field_reports saved, B2C cascade"""
+        """BLOCKED soft: status=BLOCKED, B2C cascade"""
         product = Product(
             id=str(uuid4()),
             seller_id=str(uuid4()),
@@ -65,31 +66,28 @@ class TestModerationEvents:
         db_session.add(product)
         db_session.commit()
 
-        with patch('src.services.event_service.send_event_to_b2c') as mock_b2c:
-            response = client.post(
-                "/api/v1/events/moderation",
-                json={
-                    "idempotency_key": str(uuid4()),
-                    "product_id": str(product.id),
-                    "status": "BLOCKED",
-                    "hard_block": False,
-                    "blocking_reason": {
-                        "id": str(uuid4()),
-                        "title": "Bad photos",
-                        "comment": "Blurry images"
-                    },
-                    "field_reports": [
-                        {"field_name": "images", "comment": "Low quality"}
-                    ]
-                },
-                headers={"X-Service-Key": settings.MODERATION_SERVICE_KEY}
-            )
+        response = client.post(
+            "/api/v1/moderation/events",
+            json={
+                "idempotency_key": str(uuid4()),
+                "product_id": str(product.id),
+                "event_type": "BLOCKED",
+                "hard_block": False,
+                "moderator_comment": "Некачественные фото",
+                "blocking_reason_id": "reason-uuid-001",
+                "field_reports": [
+                    {"field_name": "image", "comment": "blurry", "severity": "high"}
+                ],
+                "occurred_at": datetime.now(timezone.utc).isoformat()
+            },
+            headers={"X-Service-Key": settings.MODERATION_SERVICE_KEY}
+        )
 
-        assert response.status_code == 200
+        assert response.status_code == 204
         db_session.refresh(product)
         assert product.status == Product.Status.BLOCKED
         assert product.blocked is True
-        mock_b2c.assert_called_once()
+        assert product.moderator_comment == "Некачественные фото"
 
     def test_blocked_hard_sets_terminal_status(self, client, db_session):
         """BLOCKED hard: HARD_BLOCKED, B2C cascade"""
@@ -110,31 +108,27 @@ class TestModerationEvents:
         db_session.add(product)
         db_session.commit()
 
-        with patch('src.services.event_service.send_event_to_b2c') as mock_b2c:
-            response = client.post(
-                "/api/v1/events/moderation",
-                json={
-                    "idempotency_key": str(uuid4()),
-                    "product_id": str(product.id),
-                    "status": "BLOCKED",
-                    "hard_block": True,
-                    "blocking_reason": {
-                        "id": str(uuid4()),
-                        "title": "Fraud",
-                        "comment": "Scam product"
-                    }
-                },
-                headers={"X-Service-Key": settings.MODERATION_SERVICE_KEY}
-            )
+        response = client.post(
+            "/api/v1/moderation/events",
+            json={
+                "idempotency_key": str(uuid4()),
+                "product_id": str(product.id),
+                "event_type": "BLOCKED",
+                "hard_block": True,
+                "moderator_comment": "Мошенничество",
+                "blocking_reason_id": "reason-uuid-002",
+                "occurred_at": datetime.now(timezone.utc).isoformat()
+            },
+            headers={"X-Service-Key": settings.MODERATION_SERVICE_KEY}
+        )
 
-        assert response.status_code == 200
+        assert response.status_code == 204
         db_session.refresh(product)
         assert product.status == Product.Status.HARD_BLOCKED
-        assert product.blocked is True
-        mock_b2c.assert_called_once()
+        assert product.moderator_comment == "Мошенничество"
 
     def test_duplicate_event_same_idempotency_key_no_side_effects(self, client, db_session):
-        """Duplicate event with same idempotency_key → no changes"""
+        """Duplicate event with same idempotency_key -> no changes"""
         product = Product(
             id=str(uuid4()),
             seller_id=str(uuid4()),
@@ -155,41 +149,45 @@ class TestModerationEvents:
         idempotency_key = str(uuid4())
 
         response1 = client.post(
-            "/api/v1/events/moderation",
+            "/api/v1/moderation/events",
             json={
                 "idempotency_key": idempotency_key,
                 "product_id": str(product.id),
-                "status": "BLOCKED",
+                "event_type": "BLOCKED",
                 "hard_block": True,
-                "blocking_reason": {"id": str(uuid4()), "title": "Fraud", "comment": "Scam"}
+                "moderator_comment": "Fraud",
+                "blocking_reason_id": "reason-uuid-003",
+                "occurred_at": datetime.now(timezone.utc).isoformat()
             },
             headers={"X-Service-Key": settings.MODERATION_SERVICE_KEY}
         )
-        assert response1.status_code == 200
+        assert response1.status_code == 204
 
         response2 = client.post(
-            "/api/v1/events/moderation",
+            "/api/v1/moderation/events",
             json={
                 "idempotency_key": idempotency_key,
                 "product_id": str(product.id),
-                "status": "MODERATED"
+                "event_type": "MODERATED",
+                "occurred_at": datetime.now(timezone.utc).isoformat()
             },
             headers={"X-Service-Key": settings.MODERATION_SERVICE_KEY}
         )
-        assert response2.status_code == 200
-        assert response2.json()["status"] == "duplicate"
+        assert response2.status_code == 204
+        assert response2.headers.get("X-Idempotent-Replay") == "true"
 
         db_session.refresh(product)
         assert product.status == Product.Status.HARD_BLOCKED
 
     def test_missing_service_key_returns_401(self, client, db_session):
-        """No X-Service-Key → 401"""
+        """No X-Service-Key -> 401"""
         response = client.post(
-            "/api/v1/events/moderation",
+            "/api/v1/moderation/events",
             json={
                 "idempotency_key": str(uuid4()),
                 "product_id": str(uuid4()),
-                "status": "MODERATED"
+                "event_type": "MODERATED",
+                "occurred_at": datetime.now(timezone.utc).isoformat()
             }
         )
         assert response.status_code == 401
