@@ -99,3 +99,23 @@ def send_created_event(product_id: str, seller_id: str, sku: dict) -> None:
             logger.info("product_created_event_sent", product_id=product_id, sku_code=sku.get("sku_code"))
     except Exception as e:
         logger.error("failed_to_send_created_event", product_id=product_id, error=str(e))
+
+
+def send_event_to_b2c(event_type: str, payload: dict) -> None:
+    """Generic event sender to B2C service"""
+    try:
+        with httpx.Client() as client:
+            response = client.post(
+                f"{settings.B2C_SERVICE_URL}/api/v1/events",
+                json={
+                    "event_type": event_type,
+                    "idempotency_key": str(uuid.uuid4()),
+                    "occurred_at": datetime.utcnow().isoformat(),
+                    "payload": payload
+                },
+                timeout=5.0
+            )
+            response.raise_for_status()
+            logger.info("event_sent_to_b2c", event_type=event_type)
+    except Exception as e:
+        logger.error("failed_to_send_event_to_b2c", event_type=event_type, error=str(e))
