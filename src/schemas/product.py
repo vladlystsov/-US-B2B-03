@@ -108,3 +108,32 @@ class ProductDetailResponse(ProductResponse):
     blocking_reason: Optional[BlockingReasonSchema] = None
     field_reports: Optional[List[FieldReportSchema]] = None
     skus: List[SKUForSellerResponse]
+
+
+class SKUCatalogResponse(BaseModel):
+    id: UUID
+    sku_code: Optional[str] = None
+    name: Optional[str] = None
+    price: float
+    discount: int = 0
+    image: Optional[str] = None
+    active_quantity: int = 0
+    characteristics: List[Any] = []
+
+
+class ProductCatalogItem(BaseModel):
+    id: UUID
+    title: str
+    description: str
+    status: str
+    category_id: Optional[UUID] = None
+    images: List[Any] = []
+    characteristics: List[Any] = []
+    skus: List[SKUCatalogResponse] = []
+
+
+class CatalogResponse(BaseModel):
+    items: List[ProductCatalogItem] = []
+    total_count: int = 0
+    limit: int = 20
+    offset: int = 0

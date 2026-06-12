@@ -280,6 +280,87 @@ class ProductService:
             enriched.append(enriched_sku)
         return enriched
 
+    def get_catalog_products(
+        self,
+        limit: int = 20,
+        offset: int = 0,
+        category: str = None,
+        search: str = None,
+        sort: str = None,
+        ids: list[str] = None
+    ) -> tuple[list[Product], int]:
+        """B2C catalog: only MODERATED, not deleted, at least one SKU with active_quantity > 0"""
+        query = self.db.query(Product).filter(
+            Product.status == Product.Status.MODERATED,
+            Product.deleted == False
+        )
+
+        if ids:
+            query = query.filter(Product.id.in_(ids))
+
+        if category:
+            query = query.filter(Product.category_id == category)
+
+        if search:
+            search_filter = f"%{search}%"
+            query = query.filter(
+                (Product.title.ilike(search_filter)) |
+                (Product.description.ilike(search_filter))
+            )
+
+        total = query.count()
+
+        if sort == "price_asc":
+            query = query.order_by(Product.created_at.asc())
+        elif sort == "price_desc":
+            query = query.order_by(Product.created_at.desc())
+        elif sort == "date_desc":
+            query = query.order_by(Product.created_at.desc())
+        else:
+            query = query.order_by(Product.created_at.desc())
+
+        products = query.offset(offset).limit(limit).all()
+
+        visible = []
+        for p in products:
+            if self._has_active_sku(p):
+                visible.append(p)
+
+        return visible, total
+
+    def _has_active_sku(self, product: Product) -> bool:
+        """Check if at least one SKU has active_quantity > 0"""
+        if not product.skus:
+            return False
+        return any(sku.get("active_quantity", 0) > 0 for sku in product.skus)
+
+    def _format_for_catalog(self, product: Product) -> dict:
+        """Format product for B2C catalog — no cost_price, no reserved_quantity"""
+        public_skus = []
+        for sku in product.skus:
+            if sku.get("active_quantity", 0) > 0:
+                public_skus.append({
+                    "id": sku.get("id"),
+                    "sku_code": sku.get("sku_code"),
+                    "name": sku.get("name"),
+                    "price": sku.get("price"),
+                    "discount": sku.get("discount", 0),
+                    "image": sku.get("image"),
+                    "active_quantity": sku.get("active_quantity", 0),
+                    "characteristics": sku.get("characteristics", [])
+                })
+
+        return {
+            "id": product.id,
+            "title": product.title,
+            "description": product.description,
+            "status": product.status,
+            "category_id": product.category_id,
+            "images": product.images,
+            "characteristics": product.characteristics,
+            "skus": public_skus
+        }
+
     def _get_blocking_info(self, product_id: str) -> dict | None:
         """Получить информацию о блокировке товара"""
         from src.models.blocking import ProductBlocking, BlockingReason
