@@ -195,3 +195,114 @@ class ProductService:
             Product.seller_id == seller_id,
             Product.deleted == False
         ).offset(skip).limit(limit).all()
+    
+    def get_product_by_id(self, product_id: str, seller_id: str, is_b2c_mode: bool = False) -> dict | None:
+        """Получить товар с учётом режима доступа"""
+        product = self.db.query(Product).filter(Product.id == product_id).first()
+        
+        if not product:
+            return None
+        
+        # B2C режим: только опубликованные товары, без cost_price
+        if is_b2c_mode:
+            if product.status != Product.Status.MODERATED or product.deleted:
+                return None
+            return self._format_for_b2c(product)
+        
+        # Seller режим: проверяем владельца
+        if product.seller_id != seller_id:
+            return None
+        
+        return self._format_for_seller(product)
+
+    def _format_for_seller(self, product: Product) -> dict:
+        """Формат для продавца — полные данные + blocking_reason"""
+        result = {
+            "id": product.id,
+            "seller_id": product.seller_id,
+            "category_id": product.category_id,
+            "title": product.title,
+            "slug": product.slug,
+            "description": product.description,
+            "status": product.status,
+            "deleted": product.deleted,
+            "blocked": product.blocked,
+            "blocking_reason_id": product.blocking_reason_id,
+            "moderator_comment": product.moderator_comment,
+            "images": product.images,
+            "characteristics": product.characteristics,
+            "skus": self._enrich_skus_for_seller(product.skus),
+            "created_at": product.created_at,
+            "updated_at": product.updated_at
+        }
+        
+        # Добавляем причину блокировки, если статус BLOCKED
+        if product.status == Product.Status.BLOCKED and product.blocked:
+            blocking_info = self._get_blocking_info(product.id)
+            if blocking_info:
+                result["blocking_reason"] = blocking_info["reason"]
+                result["field_reports"] = blocking_info["field_reports"]
+        else:
+            result["blocking_reason"] = None
+            result["field_reports"] = None
+        
+        return result
+
+    def _format_for_b2c(self, product: Product) -> dict:
+        """Формат для B2C — только публичные поля"""
+        public_skus = []
+        for sku in product.skus:
+            public_skus.append({
+                "id": sku.get("id"),
+                "sku_code": sku.get("sku_code"),
+                "price": sku.get("price"),
+                "stock_quantity": sku.get("stock_quantity", 0)
+            })
+        
+        return {
+            "id": product.id,
+            "title": product.title,
+            "slug": product.slug,
+            "description": product.description,
+            "images": product.images,
+            "characteristics": product.characteristics,
+            "skus": public_skus,
+            "status": product.status
+        }
+
+    def _enrich_skus_for_seller(self, skus: list) -> list:
+        """Добавляем cost_price и reserved_quantity для продавца"""
+        enriched = []
+        for sku in skus:
+            enriched_sku = dict(sku)  # копируем
+            enriched_sku["cost_price"] = sku.get("cost_price", 0)
+            enriched_sku["reserved_quantity"] = sku.get("reserved_quantity", 0)
+            enriched.append(enriched_sku)
+        return enriched
+
+    def _get_blocking_info(self, product_id: str) -> dict | None:
+        """Получить информацию о блокировке товара"""
+        from src.models.blocking import ProductBlocking, BlockingReason
+        
+        product_blocking = self.db.query(ProductBlocking).filter(
+            ProductBlocking.product_id == product_id
+        ).first()
+        
+        if not product_blocking:
+            return None
+        
+        reason = self.db.query(BlockingReason).filter(
+            BlockingReason.id == product_blocking.blocking_reason_id
+        ).first()
+        
+        if not reason:
+            return None
+        
+        return {
+            "reason": {
+                "id": reason.id,
+                "title": reason.title,
+                "description": reason.description
+            },
+            "field_reports": product_blocking.field_reports or []
+        }
