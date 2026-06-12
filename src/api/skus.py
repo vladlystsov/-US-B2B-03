@@ -44,3 +44,28 @@ def update_sku(
     )
 
     return updated_sku
+
+
+@router.delete("/{sku_id}")
+def delete_sku(
+    sku_id: UUID,
+    seller_id: UUID = Depends(get_current_seller_id),
+    db: Session = Depends(get_db)
+):
+    service = ProductService(db)
+    result = service.delete_sku(str(sku_id), str(seller_id))
+
+    if "code" in result:
+        status_code = {
+            "NOT_FOUND": 404,
+            "NOT_OWNER": 403,
+            "FORBIDDEN": 403,
+            "CONFLICT": 409,
+        }.get(result["code"], 400)
+
+        raise HTTPException(
+            status_code=status_code,
+            detail={"code": result["code"], "message": result["message"]}
+        )
+
+    return {"ok": True}
