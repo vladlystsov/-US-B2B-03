@@ -189,3 +189,9 @@ class ProductService:
         
         send_deleted_event(product_id=product.id, seller_id=seller_id)
         send_product_deleted_to_b2c(product_id=product.id, sku_ids=sku_ids)
+
+    def get_seller_products(self, seller_id: str, skip: int = 0, limit: int = 100) -> list[Product]:
+        return self.db.query(Product).filter(
+            Product.seller_id == seller_id,
+            Product.deleted == False
+        ).offset(skip).limit(limit).all()

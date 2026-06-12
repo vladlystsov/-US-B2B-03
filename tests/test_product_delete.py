@@ -149,22 +149,49 @@ class TestProductDelete:
         )
         
         assert response.status_code == 403
-    
+
     def test_deleted_product_not_in_seller_list(self, client, db_session, valid_jwt_with_fixed_id):
-        """Сценарий 6 (дополнительный): удалённый товар не виден в списке продавца"""
         token, seller_id = valid_jwt_with_fixed_id
         
-        product = Product(
+        active_product = Product(
+            id=str(uuid4()),
+            seller_id=str(seller_id),
+            category_id=str(uuid4()),
+            title="Active Product",
+            description="Should appear",
+            status=Product.Status.MODERATED,
+            deleted=False,
+            images=[],
+            slug="active-product"
+        )
+        db_session.add(active_product)
+        
+        deleted_product = Product(
             id=str(uuid4()),
             seller_id=str(seller_id),
             category_id=str(uuid4()),
             title="Deleted Product",
-            description="Should not appear",
-            status="MODERATED",
+            description="Should NOT appear",
+            status=Product.Status.MODERATED,
             deleted=True,
             images=[],
             slug="deleted-product"
         )
-        db_session.add(product)
+        db_session.add(deleted_product)
         db_session.commit()
-        pass
+        
+        response = client.get(
+            "/api/v1/products",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        
+        assert response.status_code == 200
+        products = response.json()
+        
+        if "items" in products:
+            product_titles = [p["title"] for p in products["items"]]
+        else:
+            product_titles = [p["title"] for p in products]
+        
+        assert "Active Product" in product_titles
+        assert "Deleted Product" not in product_titles
