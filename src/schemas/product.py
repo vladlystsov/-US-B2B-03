@@ -31,15 +31,13 @@ class ProductCreateRequest(BaseModel):
 class ProductResponse(BaseModel):
     id: UUID
     seller_id: UUID
-    category_id: UUID
     title: str
     slug: str
     description: str
     status: str
     deleted: bool
     blocked: bool
-    blocking_reason_id: UUID
-    moderator_comment: str
+    category: Optional[dict] = None
     images: List[ImageSchema]
     characteristics: List[CharacteristicSchema]
     skus: List[Any]
@@ -58,9 +56,28 @@ class ProductUpdateRequest(BaseModel):
 
 
 class SKUCreateRequest(BaseModel):
-    sku_code: str = Field(..., min_length=1, max_length=100)
-    price: float = Field(..., gt=0)
-    stock_quantity: int = Field(default=0, ge=0)
+    product_id: UUID
+    name: str = Field(..., min_length=1, max_length=255)
+    price: int = Field(..., gt=0)
+    cost_price: int = Field(..., gt=0)
+    discount: int = Field(default=0, ge=0)
+    image: str = Field(..., min_length=1)
+    characteristics: Optional[List[CharacteristicSchema]] = []
+
+
+class SKUCreateResponse(BaseModel):
+    id: UUID
+    product_id: UUID
+    name: str
+    price: int
+    cost_price: int
+    discount: int = 0
+    image: str
+    active_quantity: int = 0
+    reserved_quantity: int = 0
+    characteristics: List[CharacteristicSchema] = []
+
+    model_config = {"from_attributes": True}
 
 
 class SKUUpdateRequest(BaseModel):
@@ -108,3 +125,36 @@ class ProductDetailResponse(ProductResponse):
     blocking_reason: Optional[BlockingReasonSchema] = None
     field_reports: Optional[List[FieldReportSchema]] = None
     skus: List[SKUForSellerResponse]
+
+
+class SKUCatalogResponse(BaseModel):
+    id: UUID
+    sku_code: Optional[str] = None
+    name: Optional[str] = None
+    price: float
+    discount: int = 0
+    image: Optional[str] = None
+    active_quantity: int = 0
+    characteristics: List[Any] = []
+
+
+class CategoryBrief(BaseModel):
+    id: UUID
+    name: str = "Unknown"
+
+class ProductCatalogItem(BaseModel):
+    id: UUID
+    title: str
+    description: str
+    status: str
+    category: Optional[CategoryBrief] = None
+    images: List[Any] = []
+    characteristics: List[Any] = []
+    skus: List[SKUCatalogResponse] = []
+
+
+class CatalogResponse(BaseModel):
+    items: List[ProductCatalogItem] = []
+    total_count: int = 0
+    limit: int = 20
+    offset: int = 0

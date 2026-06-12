@@ -4,6 +4,7 @@ from src.models.product import Product
 from src.schemas.product import ProductCreateRequest
 from datetime import datetime
 from sqlalchemy.orm.attributes import flag_modified
+import uuid
 
 
 class ProductService:
@@ -47,19 +48,111 @@ class ProductService:
             skus=[]
         )
         
-        print(f"DEBUG CREATE: product object - seller_id={product.seller_id}, category_id={product.category_id}")
-        
         self.db.add(product)
         
         try:
             self.db.commit()
         except Exception as e:
-            print(f"DEBUG ERROR: {e}")
             raise
         
         self.db.refresh(product)
-        return product
+        return {
+            "id": product.id,
+            "seller_id": product.seller_id,
+            "title": product.title,
+            "slug": product.slug,
+            "description": product.description,
+            "status": product.status,
+            "deleted": product.deleted,
+            "blocked": product.blocked,
+            "category": {"id": product.category_id, "name": "Unknown"},
+            "images": product.images,
+            "characteristics": product.characteristics,
+            "skus": [],
+            "created_at": product.created_at,
+            "updated_at": product.updated_at
+        }
     
+    def create_sku(self, seller_id: str, sku_data) -> dict:
+        """Создание SKU для товара. Первый SKU переводит CREATED → ON_MODERATION."""
+        from src.services.event_service import send_created_event, send_edited_event
+
+        product = self.db.query(Product).filter(
+            Product.id == str(sku_data.product_id)
+        ).first()
+
+        if not product:
+            raise HTTPException(
+                status_code=404,
+                detail={"code": "NOT_FOUND", "message": "Product not found"}
+            )
+
+        if product.seller_id != seller_id:
+            raise HTTPException(
+                status_code=403,
+                detail={"code": "FORBIDDEN", "message": "Not your product"}
+            )
+
+        if product.status == Product.Status.HARD_BLOCKED:
+            raise HTTPException(
+                status_code=403,
+                detail={"code": "FORBIDDEN", "message": "Cannot add SKU to hard-blocked product"}
+            )
+
+        now_str = datetime.utcnow().isoformat()
+        characteristics = []
+        if sku_data.characteristics:
+            for ch in sku_data.characteristics:
+                characteristics.append({"name": ch.name, "value": ch.value})
+
+        new_sku = {
+            "id": str(uuid.uuid4()),
+            "product_id": str(product.id),
+            "name": sku_data.name,
+            "price": sku_data.price,
+            "cost_price": sku_data.cost_price,
+            "discount": sku_data.discount,
+            "image": sku_data.image,
+            "active_quantity": 0,
+            "reserved_quantity": 0,
+            "sku_code": sku_data.name,
+            "characteristics": characteristics,
+            "created_at": now_str,
+            "updated_at": now_str
+        }
+
+        if product.skus is None:
+            product.skus = []
+
+        existing_skus_count = len(product.skus)
+        product.skus.append(new_sku)
+        flag_modified(product, "skus")
+
+        is_first_sku = existing_skus_count == 0 and product.status == Product.Status.CREATED
+        is_post_moderated = product.status in [Product.Status.MODERATED, Product.Status.BLOCKED]
+
+        if is_first_sku or is_post_moderated:
+            product.status = Product.Status.ON_MODERATION
+            product.updated_at = datetime.utcnow()
+
+        self.db.commit()
+        self.db.refresh(product)
+
+        if is_first_sku:
+            send_created_event(
+                product_id=str(product.id),
+                seller_id=seller_id,
+                sku=new_sku
+            )
+        elif is_post_moderated:
+            send_edited_event(
+                product_id=str(product.id),
+                seller_id=seller_id,
+                changes={"sku_added": new_sku["id"]}
+            )
+
+        return new_sku
+
     def update_product(self, product_id: str, seller_id: str, update_data: dict) -> Product:
         product = self.db.query(Product).filter(
             Product.id == product_id
@@ -93,7 +186,23 @@ class ProductService:
 
         self.db.commit()
         self.db.refresh(product)
-        return product
+        
+        return {
+            "id": product.id,
+            "seller_id": product.seller_id,
+            "title": product.title,
+            "slug": product.slug,
+            "description": product.description,
+            "status": product.status,
+            "deleted": product.deleted,
+            "blocked": product.blocked,
+            "category": {"id": product.category_id, "name": "Unknown"},
+            "images": product.images,
+            "characteristics": product.characteristics,
+            "skus": product.skus or [],
+            "created_at": product.created_at,
+            "updated_at": product.updated_at
+        }
     
     def update_sku(self, sku_id: str, seller_id: str, update_data: dict) -> dict:
         from src.services.event_service import send_edited_event
@@ -279,6 +388,88 @@ class ProductService:
             enriched_sku["reserved_quantity"] = sku.get("reserved_quantity", 0)
             enriched.append(enriched_sku)
         return enriched
+
+    def get_catalog_products(
+        self,
+        limit: int = 20,
+        offset: int = 0,
+        category: str = None,
+        search: str = None,
+        sort: str = None,
+        ids: list[str] = None
+    ) -> tuple[list[dict], int]:
+        """B2C catalog: only MODERATED, not deleted, at least one SKU with active_quantity > 0"""
+        query = self.db.query(Product).filter(
+            Product.status == Product.Status.MODERATED,
+            Product.deleted == False
+        )
+
+        if ids:
+            query = query.filter(Product.id.in_(ids))
+
+        if category:
+            query = query.filter(Product.category_id == category)
+
+        if search:
+            search_filter = f"%{search}%"
+            query = query.filter(
+                (Product.title.ilike(search_filter)) |
+                (Product.description.ilike(search_filter))
+            )
+
+        all_products = query.all()
+
+        visible = [p for p in all_products if self._has_active_sku(p)]
+
+        if sort == "price_asc":
+            visible.sort(key=lambda p: self._min_sku_price(p))
+        elif sort == "price_desc":
+            visible.sort(key=lambda p: self._min_sku_price(p), reverse=True)
+        elif sort == "date_desc":
+            visible.sort(key=lambda p: p.created_at or "", reverse=True)
+
+        total = len(visible)
+        paginated = visible[offset:offset + limit]
+
+        return paginated, total
+
+    def _min_sku_price(self, product: Product) -> float:
+        """Get minimum price from active SKUs"""
+        prices = [s.get("price", 0) for s in (product.skus or []) if s.get("active_quantity", 0) > 0]
+        return min(prices) if prices else 0
+
+    def _has_active_sku(self, product: Product) -> bool:
+        """Check if at least one SKU has active_quantity > 0"""
+        if not product.skus:
+            return False
+        return any(sku.get("active_quantity", 0) > 0 for sku in product.skus)
+
+    def _format_for_catalog(self, product: Product) -> dict:
+        """Format product for B2C catalog — no cost_price, no reserved_quantity"""
+        public_skus = []
+        for sku in product.skus:
+            if sku.get("active_quantity", 0) > 0:
+                public_skus.append({
+                    "id": sku.get("id"),
+                    "sku_code": sku.get("sku_code"),
+                    "name": sku.get("name"),
+                    "price": sku.get("price"),
+                    "discount": sku.get("discount", 0),
+                    "image": sku.get("image"),
+                    "active_quantity": sku.get("active_quantity", 0),
+                    "characteristics": sku.get("characteristics", [])
+                })
+
+        return {
+            "id": product.id,
+            "title": product.title,
+            "description": product.description,
+            "status": product.status,
+            "category": {"id": product.category_id, "name": "Unknown"},
+            "images": product.images,
+            "characteristics": product.characteristics,
+            "skus": public_skus
+        }
 
     def _get_blocking_info(self, product_id: str) -> dict | None:
         """Получить информацию о блокировке товара"""
