@@ -9,6 +9,7 @@ from src.models.product import Product
 class TestProductDelete:
     
     def test_delete_sets_deleted_true(self, client, db_session, valid_jwt_with_fixed_id):
+        """Сценарий 1: delete_sets_deleted_true — поле deleted=true в БД"""
         token, seller_id = valid_jwt_with_fixed_id
         
         product = Product(
@@ -35,6 +36,7 @@ class TestProductDelete:
         assert product.deleted == True
     
     def test_delete_emits_event_to_moderation(self, client, db_session, valid_jwt_with_fixed_id):
+        """Сценарий 2: delete_emits_event_to_moderation — событие DELETED уходит в Moderation"""
         token, seller_id = valid_jwt_with_fixed_id
         
         product = Product(
@@ -64,6 +66,7 @@ class TestProductDelete:
         )
     
     def test_delete_emits_product_deleted_to_b2c(self, client, db_session, valid_jwt_with_fixed_id):
+        """Сценарий 3: delete_emits_product_deleted_to_b2c — событие PRODUCT_DELETED уходит в B2C с sku_ids"""
         token, seller_id = valid_jwt_with_fixed_id
         
         sku_id = str(uuid4())
@@ -95,6 +98,7 @@ class TestProductDelete:
         )
     
     def test_delete_already_deleted_returns_400(self, client, db_session, valid_jwt_with_fixed_id):
+        """Сценарий 4: delete_already_deleted_returns_400 — повторное удаление → 400"""
         token, seller_id = valid_jwt_with_fixed_id
         
         product = Product(
@@ -104,7 +108,7 @@ class TestProductDelete:
             title="Test Product",
             description="Test Description",
             status="MODERATED",
-            deleted=True,
+            deleted=True,  # уже удалён
             images=[],
             slug="test-product"
         )
@@ -121,6 +125,7 @@ class TestProductDelete:
         assert data["code"] == "ALREADY_DELETED"
     
     def test_delete_others_product_returns_403(self, client, db_session, valid_jwt_with_fixed_id, valid_jwt):
+        """Сценарий 5: delete_others_product_returns_403 — удаление чужого товара → 403"""
         token, seller_id = valid_jwt_with_fixed_id
         other_token = valid_jwt
         
@@ -146,6 +151,7 @@ class TestProductDelete:
         assert response.status_code == 403
     
     def test_deleted_product_not_in_seller_list(self, client, db_session, valid_jwt_with_fixed_id):
+        """Сценарий 6 (дополнительный): удалённый товар не виден в списке продавца"""
         token, seller_id = valid_jwt_with_fixed_id
         
         product = Product(

@@ -2,6 +2,8 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from src.models.product import Product
 from src.schemas.product import ProductCreateRequest
+from datetime import datetime
+from sqlalchemy.orm.attributes import flag_modified
 
 
 class ProductService:
@@ -87,11 +89,15 @@ class ProductService:
         if old_status in ["MODERATED", "BLOCKED"]:
             product.status = "ON_MODERATION"
 
+        product.updated_at = datetime.utcnow()
+
         self.db.commit()
         self.db.refresh(product)
         return product
     
     def update_sku(self, sku_id: str, seller_id: str, update_data: dict) -> dict:
+        from src.services.event_service import send_edited_event
+        
         products = self.db.query(Product).filter(
             Product.seller_id == seller_id
         ).all()
@@ -102,7 +108,7 @@ class ProductService:
         
         for prod in products:
             for i, sku in enumerate(prod.skus):
-                if str(sku.get("id")) == str(sku_id):
+                if sku.get("id") == sku_id:
                     found_product = prod
                     sku_index = i
                     original_reserved = sku.get("reserved_quantity", 0)
@@ -111,31 +117,51 @@ class ProductService:
                 break
         
         if not found_product:
-            raise HTTPException(status_code=404, detail="SKU not found")
+            raise HTTPException(
+                status_code=404,
+                detail={"code": "SKU_NOT_FOUND", "message": "SKU not found"}
+            )
         
         if found_product.status == "HARD_BLOCKED":
-            raise HTTPException(status_code=403, detail="Product is hard blocked")
+            raise HTTPException(
+                status_code=403,
+                detail={"code": "HARD_BLOCKED", "message": "Product is hard blocked"}
+            )
         
-        updated_sku = found_product.skus[sku_index].copy()
+        sku_to_update = found_product.skus[sku_index]
         
-        if "sku_code" in update_data and update_data["sku_code"] is not None:
-            updated_sku["sku_code"] = update_data["sku_code"]
-        if "price" in update_data and update_data["price"] is not None:
-            updated_sku["price"] = update_data["price"]
-        if "stock_quantity" in update_data and update_data["stock_quantity"] is not None:
-            updated_sku["stock_quantity"] = update_data["stock_quantity"]
+        if "sku_code" in update_data:
+            sku_to_update["sku_code"] = update_data["sku_code"]
+        if "price" in update_data:
+            sku_to_update["price"] = update_data["price"]
+        if "stock_quantity" in update_data:
+            sku_to_update["stock_quantity"] = update_data["stock_quantity"]
         
-        updated_sku["reserved_quantity"] = original_reserved
-        found_product.skus[sku_index] = updated_sku
+        sku_to_update["reserved_quantity"] = original_reserved
+        sku_to_update["updated_at"] = datetime.utcnow().isoformat()
         
-        if found_product.status in ["MODERATED", "BLOCKED"]:
+        if "created_at" not in sku_to_update:
+            sku_to_update["created_at"] = datetime.utcnow().isoformat()
+        
+        flag_modified(found_product, "skus")
+        
+        old_status = found_product.status
+        if old_status in ["MODERATED", "BLOCKED"]:
             found_product.status = "ON_MODERATION"
+            found_product.updated_at = datetime.utcnow()
         
         self.db.commit()
-        self.db.refresh(found_product)
         
-        updated_sku["product_id"] = str(found_product.id)
-        return updated_sku
+        result_sku = found_product.skus[sku_index].copy()
+        result_sku["product_id"] = str(found_product.id)
+        
+        send_edited_event(
+            product_id=str(found_product.id),
+            seller_id=seller_id,
+            changes=update_data
+        )
+        
+        return result_sku
     
     def delete_product(self, product_id: str, seller_id: str) -> None:
         from src.services.event_service import send_deleted_event, send_product_deleted_to_b2c
