@@ -299,6 +299,64 @@ class ProductService:
         send_deleted_event(product_id=product.id, seller_id=seller_id)
         send_product_deleted_to_b2c(product_id=product.id, sku_ids=sku_ids)
 
+    def delete_sku(self, sku_id: str, seller_id: str) -> dict:
+        """Delete SKU with guardrails: HARD_BLOCKED check, reserved_quantity check, side effects."""
+        from src.services.event_service import send_deleted_event, send_event_to_b2c
+
+        products = self.db.query(Product).filter(
+            Product.deleted == False
+        ).all()
+
+        found_product = None
+        sku_index = None
+
+        for product in products:
+            for i, sku in enumerate(product.skus or []):
+                if str(sku.get("id")) == sku_id:
+                    found_product = product
+                    sku_index = i
+                    break
+            if found_product:
+                break
+
+        if not found_product:
+            return {"code": "NOT_FOUND", "message": "SKU not found"}
+
+        if found_product.seller_id != seller_id:
+            return {"code": "NOT_OWNER", "message": "SKU does not belong to the authenticated seller"}
+
+        if found_product.status == Product.Status.HARD_BLOCKED:
+            return {"code": "FORBIDDEN", "message": "Cannot delete SKU of hard-blocked product"}
+
+        sku = found_product.skus[sku_index]
+        if sku.get("reserved_quantity", 0) > 0:
+            return {"code": "CONFLICT", "message": "Cannot delete SKU with active reserves"}
+
+        active_qty = sku.get("active_quantity", 0)
+        product_was_on_moderation = found_product.status == Product.Status.ON_MODERATION
+        product_is_moderated = found_product.status == Product.Status.MODERATED
+
+        found_product.skus.pop(sku_index)
+        flag_modified(found_product, "skus")
+
+        if len(found_product.skus) == 0 and product_was_on_moderation:
+            found_product.status = Product.Status.CREATED
+            found_product.updated_at = datetime.utcnow()
+            send_deleted_event(product_id=found_product.id, seller_id=seller_id)
+
+        if active_qty > 0 and product_is_moderated:
+            send_event_to_b2c(
+                event_type="SKU_OUT_OF_STOCK",
+                payload={
+                    "sku_id": sku_id,
+                    "product_id": str(found_product.id),
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            )
+
+        self.db.commit()
+        return {"ok": True}
+
     def get_seller_products(self, seller_id: str, skip: int = 0, limit: int = 100) -> list[Product]:
         return self.db.query(Product).filter(
             Product.seller_id == seller_id,
