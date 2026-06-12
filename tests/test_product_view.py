@@ -1,23 +1,42 @@
 # tests/test_product_view.py
 import pytest
 from uuid import uuid4
+from datetime import datetime
 from src.models.product import Product
 from src.models.blocking import BlockingReason, ProductBlocking
 
+
 class TestProductView:
-    
     def test_get_moderated_product_returns_full_payload(self, client, db_session, valid_jwt_with_fixed_id):
         """MODERATED: полные данные, blocking_reason=null"""
         token, seller_id = valid_jwt_with_fixed_id
         
+        sku_id = str(uuid4())
+        now = datetime.now().isoformat()
+        
         product = Product(
             id=str(uuid4()),
             seller_id=seller_id,
+            category_id=str(uuid4()),
             title="Test Product",
+            slug="test-product",
+            description="Test description",
             status=Product.Status.MODERATED,
             deleted=False,
             blocked=False,
-            skus=[{"id": "s1", "price": 10000, "cost_price": 7000, "reserved_quantity": 2}]
+            images=[],
+            characteristics=[],
+            skus=[{
+                "id": sku_id,
+                # product_id можно не указывать совсем
+                "sku_code": "SKU001",
+                "price": 10000,
+                "cost_price": 7000,
+                "stock_quantity": 10,
+                "reserved_quantity": 2,
+                "created_at": now,
+                "updated_at": now
+            }]
         )
         db_session.add(product)
         db_session.commit()
@@ -44,18 +63,26 @@ class TestProductView:
             description="Товар нарушает правила"
         )
         db_session.add(reason)
+        db_session.flush()
         
         product = Product(
             id=str(uuid4()),
             seller_id=seller_id,
+            category_id=str(uuid4()),
             title="Bad Product",
+            slug="bad-product",
+            description="Bad description",
             status=Product.Status.BLOCKED,
             blocked=True,
+            images=[],
+            characteristics=[],
             skus=[]
         )
         db_session.add(product)
+        db_session.flush()
         
         product_blocking = ProductBlocking(
+            id=str(uuid4()),
             product_id=product.id,
             blocking_reason_id=reason.id,
             field_reports=[
@@ -86,8 +113,13 @@ class TestProductView:
         product = Product(
             id=str(uuid4()),
             seller_id=owner_id,
+            category_id=str(uuid4()),
             title="Someone's Product",
-            status=Product.Status.MODERATED
+            slug="someones-product",
+            description="Description",
+            status=Product.Status.MODERATED,
+            images=[],
+            characteristics=[]
         )
         db_session.add(product)
         db_session.commit()
