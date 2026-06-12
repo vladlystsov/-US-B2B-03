@@ -58,9 +58,28 @@ class ProductUpdateRequest(BaseModel):
 
 
 class SKUCreateRequest(BaseModel):
-    sku_code: str = Field(..., min_length=1, max_length=100)
-    price: float = Field(..., gt=0)
-    stock_quantity: int = Field(default=0, ge=0)
+    product_id: UUID
+    name: str = Field(..., min_length=1, max_length=255)
+    price: int = Field(..., gt=0)
+    cost_price: int = Field(..., gt=0)
+    discount: int = Field(default=0, ge=0)
+    image: str = Field(..., min_length=1)
+    characteristics: Optional[List[CharacteristicSchema]] = []
+
+
+class SKUCreateResponse(BaseModel):
+    id: UUID
+    product_id: UUID
+    name: str
+    price: int
+    cost_price: int
+    discount: int = 0
+    image: str
+    active_quantity: int = 0
+    reserved_quantity: int = 0
+    characteristics: List[CharacteristicSchema] = []
+
+    model_config = {"from_attributes": True}
 
 
 class SKUUpdateRequest(BaseModel):

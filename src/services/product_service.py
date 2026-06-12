@@ -4,6 +4,7 @@ from src.models.product import Product
 from src.schemas.product import ProductCreateRequest
 from datetime import datetime
 from sqlalchemy.orm.attributes import flag_modified
+import uuid
 
 
 class ProductService:
@@ -60,6 +61,86 @@ class ProductService:
         self.db.refresh(product)
         return product
     
+    def create_sku(self, seller_id: str, sku_data) -> dict:
+        """Создание SKU для товара. Первый SKU переводит CREATED → ON_MODERATION."""
+        from src.services.event_service import send_created_event, send_edited_event
+
+        product = self.db.query(Product).filter(
+            Product.id == str(sku_data.product_id)
+        ).first()
+
+        if not product:
+            raise HTTPException(
+                status_code=404,
+                detail={"code": "NOT_FOUND", "message": "Product not found"}
+            )
+
+        if product.seller_id != seller_id:
+            raise HTTPException(
+                status_code=403,
+                detail={"code": "FORBIDDEN", "message": "Not your product"}
+            )
+
+        if product.status == Product.Status.HARD_BLOCKED:
+            raise HTTPException(
+                status_code=403,
+                detail={"code": "FORBIDDEN", "message": "Cannot add SKU to hard-blocked product"}
+            )
+
+        now_str = datetime.utcnow().isoformat()
+        characteristics = []
+        if sku_data.characteristics:
+            for ch in sku_data.characteristics:
+                characteristics.append({"name": ch.name, "value": ch.value})
+
+        new_sku = {
+            "id": str(uuid.uuid4()),
+            "product_id": str(product.id),
+            "name": sku_data.name,
+            "price": sku_data.price,
+            "cost_price": sku_data.cost_price,
+            "discount": sku_data.discount,
+            "image": sku_data.image,
+            "active_quantity": 0,
+            "reserved_quantity": 0,
+            "sku_code": sku_data.name,
+            "characteristics": characteristics,
+            "created_at": now_str,
+            "updated_at": now_str
+        }
+
+        if product.skus is None:
+            product.skus = []
+
+        existing_skus_count = len(product.skus)
+        product.skus.append(new_sku)
+        flag_modified(product, "skus")
+
+        is_first_sku = existing_skus_count == 0 and product.status == Product.Status.CREATED
+        is_post_moderated = product.status in [Product.Status.MODERATED, Product.Status.BLOCKED]
+
+        if is_first_sku or is_post_moderated:
+            product.status = Product.Status.ON_MODERATION
+            product.updated_at = datetime.utcnow()
+
+        self.db.commit()
+        self.db.refresh(product)
+
+        if is_first_sku:
+            send_created_event(
+                product_id=str(product.id),
+                seller_id=seller_id,
+                sku=new_sku
+            )
+        elif is_post_moderated:
+            send_edited_event(
+                product_id=str(product.id),
+                seller_id=seller_id,
+                changes={"sku_added": new_sku["id"]}
+            )
+
+        return new_sku
+
     def update_product(self, product_id: str, seller_id: str, update_data: dict) -> Product:
         product = self.db.query(Product).filter(
             Product.id == product_id
