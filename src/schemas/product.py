@@ -31,15 +31,13 @@ class ProductCreateRequest(BaseModel):
 class ProductResponse(BaseModel):
     id: UUID
     seller_id: UUID
-    category_id: UUID
     title: str
     slug: str
     description: str
     status: str
     deleted: bool
     blocked: bool
-    blocking_reason_id: UUID
-    moderator_comment: str
+    category: Optional[dict] = None
     images: List[ImageSchema]
     characteristics: List[CharacteristicSchema]
     skus: List[Any]

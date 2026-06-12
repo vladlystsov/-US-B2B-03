@@ -49,7 +49,7 @@ def update_product(
 
     from src.services.event_service import send_edited_event
     send_edited_event(
-        product_id=updated_product.id,
+        product_id=updated_product["id"],
         seller_id=str(seller_id),
         changes=product_data.model_dump(exclude_unset=True)
     )
@@ -57,7 +57,7 @@ def update_product(
     return updated_product
 
 
-@router.delete("/{product_id}", status_code=204)
+@router.delete("/{product_id}")
 def delete_product(
     product_id: UUID,
     seller_id: UUID = Depends(get_current_seller_id),
@@ -65,7 +65,7 @@ def delete_product(
 ):
     service = ProductService(db)
     service.delete_product(product_id=str(product_id), seller_id=str(seller_id))
-    return None
+    return {"ok": True}
 
 
 @router.get("/")

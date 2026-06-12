@@ -48,18 +48,30 @@ class ProductService:
             skus=[]
         )
         
-        print(f"DEBUG CREATE: product object - seller_id={product.seller_id}, category_id={product.category_id}")
-        
         self.db.add(product)
         
         try:
             self.db.commit()
         except Exception as e:
-            print(f"DEBUG ERROR: {e}")
             raise
         
         self.db.refresh(product)
-        return product
+        return {
+            "id": product.id,
+            "seller_id": product.seller_id,
+            "title": product.title,
+            "slug": product.slug,
+            "description": product.description,
+            "status": product.status,
+            "deleted": product.deleted,
+            "blocked": product.blocked,
+            "category": {"id": product.category_id, "name": "Unknown"},
+            "images": product.images,
+            "characteristics": product.characteristics,
+            "skus": [],
+            "created_at": product.created_at,
+            "updated_at": product.updated_at
+        }
     
     def create_sku(self, seller_id: str, sku_data) -> dict:
         """Создание SKU для товара. Первый SKU переводит CREATED → ON_MODERATION."""
@@ -174,7 +186,23 @@ class ProductService:
 
         self.db.commit()
         self.db.refresh(product)
-        return product
+        
+        return {
+            "id": product.id,
+            "seller_id": product.seller_id,
+            "title": product.title,
+            "slug": product.slug,
+            "description": product.description,
+            "status": product.status,
+            "deleted": product.deleted,
+            "blocked": product.blocked,
+            "category": {"id": product.category_id, "name": "Unknown"},
+            "images": product.images,
+            "characteristics": product.characteristics,
+            "skus": product.skus or [],
+            "created_at": product.created_at,
+            "updated_at": product.updated_at
+        }
     
     def update_sku(self, sku_id: str, seller_id: str, update_data: dict) -> dict:
         from src.services.event_service import send_edited_event
