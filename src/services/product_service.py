@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from src.models.product import Product
+from src.models.category import Category
 from src.schemas.product import ProductCreateRequest
 from datetime import datetime
 from sqlalchemy.orm.attributes import flag_modified
@@ -10,6 +11,13 @@ import uuid
 class ProductService:
     def __init__(self, db: Session):
         self.db = db
+
+    def _get_category_name(self, category_id: str) -> str:
+        cat = self.db.query(Category).filter(Category.id == category_id).first()
+        return cat.name if cat else "Unknown"
+
+    def _format_category(self, product) -> dict:
+        return {"id": product.category_id, "name": self._get_category_name(product.category_id)}
     
     def create_product(self, seller_id: str, product_data: ProductCreateRequest) -> Product:
         slug = product_data.slug or product_data.title.lower().replace(" ", "-")[:255]
@@ -65,7 +73,7 @@ class ProductService:
             "status": product.status,
             "deleted": product.deleted,
             "blocked": product.blocked,
-            "category": {"id": product.category_id, "name": "Unknown"},
+            "category": self._format_category(product),
             "images": product.images,
             "characteristics": product.characteristics,
             "skus": [],
@@ -196,7 +204,7 @@ class ProductService:
             "status": product.status,
             "deleted": product.deleted,
             "blocked": product.blocked,
-            "category": {"id": product.category_id, "name": "Unknown"},
+            "category": self._format_category(product),
             "images": product.images,
             "characteristics": product.characteristics,
             "skus": product.skus or [],
@@ -393,8 +401,9 @@ class ProductService:
                 "id": p.id,
                 "title": p.title,
                 "status": p.status,
-                "category": {"id": p.category_id, "name": "Unknown"},
+                "category": self._format_category(p),
                 "images": p.images,
+                "characteristics": p.characteristics,
                 "skus_count": len(skus),
                 "total_active_quantity": sum(sku.get("active_quantity", 0) for sku in skus),
                 "created_at": p.created_at
@@ -562,7 +571,7 @@ class ProductService:
             "title": product.title,
             "description": product.description,
             "status": product.status,
-            "category": {"id": product.category_id, "name": "Unknown"},
+            "category": self._format_category(product),
             "images": product.images,
             "characteristics": product.characteristics,
             "skus": public_skus
