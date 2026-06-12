@@ -6,7 +6,6 @@ from datetime import datetime
 class FieldReport(BaseModel):
     field_name: str
     comment: str
-    severity: Optional[str] = None
 
 
 class ModerationEventRequest(BaseModel):

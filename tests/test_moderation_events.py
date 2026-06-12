@@ -76,7 +76,7 @@ class TestModerationEvents:
                 "moderator_comment": "Некачественные фото",
                 "blocking_reason_id": "reason-uuid-001",
                 "field_reports": [
-                    {"field_name": "image", "comment": "blurry", "severity": "high"}
+                    {"field_name": "image", "comment": "blurry"}
                 ],
                 "occurred_at": datetime.now(timezone.utc).isoformat()
             },
@@ -90,7 +90,9 @@ class TestModerationEvents:
         assert product.moderator_comment == "Некачественные фото"
 
     def test_blocked_hard_sets_terminal_status(self, client, db_session):
-        """BLOCKED hard: HARD_BLOCKED, B2C cascade"""
+        """BLOCKED hard: HARD_BLOCKED, B2C cascade outbox event"""
+        from src.models.b2c_cascade_outbox import B2CCascadeOutbox
+
         product = Product(
             id=str(uuid4()),
             seller_id=str(uuid4()),
@@ -126,6 +128,40 @@ class TestModerationEvents:
         db_session.refresh(product)
         assert product.status == Product.Status.HARD_BLOCKED
         assert product.moderator_comment == "Мошенничество"
+
+        outbox_event = db_session.query(B2CCascadeOutbox).filter(
+            B2CCascadeOutbox.product_id == product.id
+        ).first()
+        assert outbox_event is not None
+        assert outbox_event.status == "pending"
+
+    def test_hard_blocked_product_rejects_seller_edits(self, client, db_session, valid_jwt_with_fixed_id):
+        """PUT/DELETE from seller on HARD_BLOCKED -> 403"""
+        token, seller_id = valid_jwt_with_fixed_id
+
+        product = Product(
+            id=str(uuid4()),
+            seller_id=seller_id,
+            category_id=str(uuid4()),
+            title="Hard Blocked Edit",
+            slug="hard-blocked-edit",
+            description="Description",
+            status=Product.Status.HARD_BLOCKED,
+            deleted=False,
+            blocked=True,
+            images=[],
+            characteristics=[],
+            skus=[]
+        )
+        db_session.add(product)
+        db_session.commit()
+
+        response = client.patch(
+            f"/api/v1/products/{product.id}",
+            json={"title": "Try to edit"},
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        assert response.status_code == 403
 
     def test_duplicate_event_same_idempotency_key_no_side_effects(self, client, db_session):
         """Duplicate event with same idempotency_key -> no changes"""

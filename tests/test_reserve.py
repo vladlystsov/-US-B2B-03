@@ -1,5 +1,6 @@
 import pytest
 from uuid import uuid4
+from unittest.mock import patch
 
 from src.models.product import Product
 from src.config import settings
@@ -99,8 +100,8 @@ class TestReserve:
         assert product.skus[0]["active_quantity"] == 2
         assert product.skus[0]["reserved_quantity"] == 0
 
-    def test_idempotent_reserve_returns_same_result(self, client, db_session):
-        """Same idempotency_key -> same result without double deduction"""
+    def test_idempotent_reserve_returns_200_without_double_deduction(self, client, db_session):
+        """Same idempotency_key -> 200 without double deduction"""
         sku_id = str(uuid4())
         product = Product(
             id=str(uuid4()),
@@ -152,6 +153,50 @@ class TestReserve:
 
         db_session.refresh(product)
         assert product.skus[0]["active_quantity"] == 7
+        assert product.skus[0]["reserved_quantity"] == 3
+
+    def test_sku_out_of_stock_event_emitted(self, client, db_session):
+        """active_quantity becomes 0 -> SKU_OUT_OF_STOCK event emitted"""
+        sku_id = str(uuid4())
+        product = Product(
+            id=str(uuid4()),
+            seller_id=str(uuid4()),
+            category_id=str(uuid4()),
+            title="OutOfStock Test",
+            slug="out-of-stock",
+            description="Description",
+            status=Product.Status.MODERATED,
+            deleted=False,
+            blocked=False,
+            images=[],
+            characteristics=[],
+            skus=[{
+                "id": sku_id,
+                "sku_code": "SKU005",
+                "price": 10000,
+                "active_quantity": 3,
+                "reserved_quantity": 0
+            }]
+        )
+        db_session.add(product)
+        db_session.commit()
+
+        with patch('src.services.reserve_service.ReserveService._emit_out_of_stock_event') as mock_event:
+            response = client.post(
+                "/api/v1/inventory/reserve",
+                json={
+                    "idempotency_key": str(uuid4()),
+                    "order_id": str(uuid4()),
+                    "items": [{"sku_id": sku_id, "quantity": 3}]
+                },
+                headers={"X-Service-Key": settings.B2C_SERVICE_KEY}
+            )
+
+        assert response.status_code == 200
+        mock_event.assert_called_once()
+
+        db_session.refresh(product)
+        assert product.skus[0]["active_quantity"] == 0
         assert product.skus[0]["reserved_quantity"] == 3
 
     def test_unreserve_restores_quantities(self, client, db_session):
