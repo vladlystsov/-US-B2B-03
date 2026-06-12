@@ -9,6 +9,7 @@ from src.schemas.product import (
 )
 from src.services.product_service import ProductService
 from src.dependencies.auth import get_current_seller_id
+from typing import List
 
 router = APIRouter(prefix="/api/v1/products", tags=["Products"])
 
@@ -58,3 +59,14 @@ def delete_product(
     service = ProductService(db)
     service.delete_product(product_id=str(product_id), seller_id=str(seller_id))
     return None
+
+@router.get("/", response_model=list[ProductResponse])
+def get_products(
+    seller_id: UUID = Depends(get_current_seller_id),
+    db: Session = Depends(get_db),
+    skip: int = 0,
+    limit: int = 100
+):
+    service = ProductService(db)
+    products = service.get_seller_products(str(seller_id), skip=skip, limit=limit)
+    return products
