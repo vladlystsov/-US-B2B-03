@@ -62,7 +62,7 @@ class InvoiceService:
         invoice = Invoice(
             id=str(uuid4()),
             seller_id=seller_id,
-            status=InvoiceStatus.PENDING,
+            status=InvoiceStatus.CREATED,
             items=validated_items,
             created_at=now,
             updated_at=now

@@ -106,7 +106,7 @@ def send_event_to_b2c(event_type: str, payload: dict) -> None:
     try:
         with httpx.Client() as client:
             response = client.post(
-                f"{settings.B2C_SERVICE_URL}/api/v1/events",
+                f"{settings.B2C_SERVICE_URL}/api/v1/b2b/events",
                 json={
                     "event_type": event_type,
                     "idempotency_key": str(uuid.uuid4()),

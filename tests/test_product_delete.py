@@ -31,8 +31,8 @@ class TestProductDelete:
             headers={"Authorization": f"Bearer {token}"}
         )
         
-        assert response.status_code == 200
-        assert response.json() == {"ok": True}
+        assert response.status_code == 204
+        assert response.content == b""
         db_session.refresh(product)
         assert product.deleted == True
     
@@ -60,7 +60,8 @@ class TestProductDelete:
                 headers={"Authorization": f"Bearer {token}"}
             )
         
-        assert response.status_code == 200
+        assert response.status_code == 204
+        assert response.content == b""
         mock_event.assert_called_once_with(
             product_id=product.id,
             seller_id=seller_id
@@ -92,7 +93,8 @@ class TestProductDelete:
                 headers={"Authorization": f"Bearer {token}"}
             )
         
-        assert response.status_code == 200
+        assert response.status_code == 204
+        assert response.content == b""
         mock_event.assert_called_once_with(
             product_id=product.id,
             sku_ids=[sku_id]
