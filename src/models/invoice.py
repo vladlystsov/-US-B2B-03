@@ -5,16 +5,17 @@ import uuid
 import enum
 
 class InvoiceStatus(str, enum.Enum):
-    PENDING = "PENDING"
+    CREATED = "CREATED"
+    PARTIALLY_ACCEPTED = "PARTIALLY_ACCEPTED"
     ACCEPTED = "ACCEPTED"
-    REJECTED = "REJECTED"
+    CANCELLED = "CANCELLED"
 
 class Invoice(Base):
     __tablename__ = "invoices"
     
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     seller_id = Column(String(36), nullable=False, index=True)
-    status = Column(SQLEnum(InvoiceStatus), nullable=False, default=InvoiceStatus.PENDING)
+    status = Column(SQLEnum(InvoiceStatus), nullable=False, default=InvoiceStatus.CREATED)
     items = Column(JSON, nullable=False, default=list)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

@@ -44,7 +44,7 @@ class TestInvoiceCreate:
         
         assert response.status_code == 201
         data = response.json()
-        assert data["status"] == "PENDING"
+        assert data["status"] == "CREATED"
         assert len(data["items"]) == 1
         assert data["items"][0]["sku_id"] == sku_id
         assert data["items"][0]["quantity"] == 5
@@ -53,7 +53,7 @@ class TestInvoiceCreate:
         invoice = db_session.query(Invoice).filter(Invoice.id == data["id"]).first()
         assert invoice is not None
         assert invoice.seller_id == seller_id
-        assert invoice.status == InvoiceStatus.PENDING
+        assert invoice.status == InvoiceStatus.CREATED
     
     def test_empty_items_returns_400(self, client, valid_jwt_with_fixed_id):
         """Empty items → 400"""

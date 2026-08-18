@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Header, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Header, Query, Request, Response
 from sqlalchemy.orm import Session
 from uuid import UUID
 from src.config import settings
@@ -58,7 +58,7 @@ def update_product(
     return updated_product
 
 
-@router.delete("/{product_id}")
+@router.delete("/{product_id}", status_code=204)
 def delete_product(
     product_id: UUID,
     seller_id: UUID = Depends(get_current_seller_id),
@@ -66,71 +66,49 @@ def delete_product(
 ):
     service = ProductService(db)
     service.delete_product(product_id=str(product_id), seller_id=str(seller_id))
-    return {"ok": True}
+    return Response(status_code=204)
 
 
-@router.get("/")
+@router.get("/", response_model=SellerProductsResponse)
 def get_products(
     request: Request,
     db: Session = Depends(get_db),
-    x_service_key: Optional[str] = Header(None),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    category: Optional[str] = None,
     search: Optional[str] = None,
-    sort: Optional[str] = None,
-    ids: Optional[str] = None,
     status: Optional[str] = None,
 ):
-    is_b2c_mode = x_service_key == settings.B2C_SERVICE_KEY if x_service_key else False
-
-    if is_b2c_mode:
-        service = ProductService(db)
-        id_list = None
-        if ids:
-            id_list = [i.strip() for i in ids.split(",") if i.strip()]
-
-        products, total = service.get_catalog_products(
-            limit=limit,
-            offset=offset,
-            category=category,
-            search=search,
-            sort=sort,
-            ids=id_list
+    """Seller cabinet listing; public B2C catalog lives in api.public_products."""
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "UNAUTHORIZED", "message": "Missing or invalid authorization"},
         )
 
-        items = [service._format_for_catalog(p) for p in products]
-        return CatalogResponse(items=items, total_count=total, limit=limit, offset=offset)
+    from jose import JWTError, jwt as jose_jwt
+    try:
+        payload = jose_jwt.decode(
+            auth_header.split(" ", 1)[1], settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM]
+        )
+        seller_id_str = payload.get("sub")
+    except JWTError:
+        seller_id_str = None
+    if not seller_id_str:
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "UNAUTHORIZED", "message": "Missing or invalid authorization"},
+        )
 
-    auth_header = request.headers.get("Authorization")
-    if auth_header and auth_header.startswith("Bearer "):
-        from jose import jwt as jose_jwt
-        token = auth_header.split(" ")[1]
-        try:
-            payload = jose_jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
-            seller_id_str = payload.get("sub")
-            if seller_id_str:
-                service = ProductService(db)
-                items, total = service.get_seller_products_list(
-                    seller_id=seller_id_str,
-                    limit=limit,
-                    offset=offset,
-                    status=status,
-                    search=search
-                )
-                return SellerProductsResponse(
-                    items=items,
-                    total_count=total,
-                    limit=limit,
-                    offset=offset
-                )
-        except Exception:
-            pass
-
-    raise HTTPException(
-        status_code=401,
-        detail={"code": "UNAUTHORIZED", "message": "Missing or invalid authorization"}
+    service = ProductService(db)
+    items, total = service.get_seller_products_list(
+        seller_id=seller_id_str,
+        limit=limit,
+        offset=offset,
+        status=status,
+        search=search,
     )
+    return SellerProductsResponse(items=items, total_count=total, limit=limit, offset=offset)
 
 
 @router.get("/{product_id}", response_model=ProductDetailResponse)

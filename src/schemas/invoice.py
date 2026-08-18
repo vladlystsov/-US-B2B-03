@@ -26,9 +26,10 @@ class InvoiceCreateRequest(BaseModel):
         return v
 
 class InvoiceStatusEnum(str, Enum):
-    PENDING = "PENDING"
+    CREATED = "CREATED"
+    PARTIALLY_ACCEPTED = "PARTIALLY_ACCEPTED"
     ACCEPTED = "ACCEPTED"
-    REJECTED = "REJECTED"
+    CANCELLED = "CANCELLED"
 
 class InvoiceItemResponse(BaseModel):
     sku_id: UUID
