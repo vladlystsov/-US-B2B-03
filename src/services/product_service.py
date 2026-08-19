@@ -5,6 +5,7 @@ from src.models.category import Category
 from src.schemas.product import ProductCreateRequest
 from datetime import datetime
 from sqlalchemy.orm.attributes import flag_modified
+import random
 import uuid
 
 
@@ -515,6 +516,7 @@ class ProductService:
         price_min: int = None,
         price_max: int = None,
         seller_id: str = None,
+        filters: dict[str, str] | None = None,
     ) -> tuple[list[Product], int]:
         """B2C public catalog: moderated, non-deleted products with at least one available SKU."""
         query = self.db.query(Product).filter(
@@ -537,6 +539,8 @@ class ProductService:
             visible = [product for product in visible if self._min_sku_price(product) >= price_min]
         if price_max is not None:
             visible = [product for product in visible if self._min_sku_price(product) <= price_max]
+        if filters:
+            visible = [product for product in visible if self._matches_public_filters(product, filters)]
 
         if sort == "price_asc":
             visible.sort(key=self._min_sku_price)
@@ -547,6 +551,18 @@ class ProductService:
 
         total = len(visible)
         return visible[offset:offset + limit], total
+
+    @staticmethod
+    def _matches_public_filters(product: Product, filters: dict[str, str]) -> bool:
+        """Match B2C deep-object filters against public product and SKU characteristics."""
+        characteristics = list(product.characteristics or [])
+        for sku in product.skus or []:
+            characteristics.extend(sku.get("characteristics", []) or [])
+        normalized = {
+            str(item.get("name") or item.get("slug") or "").lower(): str(item.get("value", "")).lower()
+            for item in characteristics
+        }
+        return all(normalized.get(str(name).lower()) == str(value).lower() for name, value in filters.items())
 
     def _public_sku(self, product: Product, sku: dict) -> dict:
         image_url = sku.get("image")
@@ -568,6 +584,8 @@ class ProductService:
             "id": product.id,
             "seller_id": product.seller_id,
             "category_id": product.category_id,
+            "category": self._format_category(product),
+            "min_price": self._min_sku_price(product),
             "title": product.title,
             "slug": product.slug,
             "description": product.description,
@@ -596,6 +614,25 @@ class ProductService:
     def get_public_product(self, product_id: str) -> dict | None:
         products, _ = self.get_catalog_products(limit=1, ids=[product_id])
         return self.format_public_product(products[0]) if products else None
+
+    def get_public_similar_products(self, product_id: str, limit: int = 8) -> list[dict] | None:
+        product = self.get_public_product(product_id)
+        if not product:
+            return None
+        requested_limit = min(limit, 20)
+        same_category, _ = self.get_catalog_products(limit=100, category=product["category_id"])
+        selected = [item for item in same_category if str(item.id) != str(product_id)]
+        if len(selected) < requested_limit:
+            category = self.db.query(Category).filter(Category.id == product["category_id"]).first()
+            if category and category.parent_id:
+                parent_products, _ = self.get_catalog_products(limit=100, category=category.parent_id)
+                known_ids = {str(item.id) for item in selected}
+                for item in parent_products:
+                    if str(item.id) != str(product_id) and str(item.id) not in known_ids:
+                        selected.append(item)
+                        known_ids.add(str(item.id))
+        random.shuffle(selected)
+        return [self.format_public_short(item) for item in selected[:requested_limit]]
 
     def get_public_sku(self, sku_id: str) -> dict | None:
         products, _ = self.get_catalog_products(limit=100)

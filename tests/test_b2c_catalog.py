@@ -203,3 +203,94 @@ class TestB2CCatalog:
         assert str(visible_product.id) in returned_ids
         assert str(hidden_product.id) not in returned_ids
         assert str(deleted_product.id) not in returned_ids
+
+
+def test_public_catalog_list_includes_characteristics_and_public_skus(client, db_session):
+    product = Product(
+        id=str(uuid4()),
+        seller_id=str(uuid4()),
+        category_id=str(uuid4()),
+        title="Rich public product",
+        slug="rich-public-product",
+        description="Complete public catalog representation",
+        status=Product.Status.MODERATED,
+        deleted=False,
+        blocked=False,
+        images=[{"url": "/s3/rich.jpg", "ordering": 0}],
+        characteristics=[{"name": "brand", "value": "Neo"}],
+        skus=[{
+            "id": str(uuid4()),
+            "sku_code": "RICH-1",
+            "price": 12000,
+            "active_quantity": 2,
+            "cost_price": 5000,
+            "reserved_quantity": 1,
+        }],
+    )
+    db_session.add(product)
+    db_session.commit()
+
+    response = client.get("/api/v1/public/products", headers={"X-Service-Key": settings.B2C_TO_B2B_KEY})
+    item = next(item for item in response.json()["items"] if item["id"] == product.id)
+
+    assert response.status_code == 200
+    assert item["description"] == product.description
+    assert item["characteristics"] == [{"name": "brand", "value": "Neo"}]
+    assert item["skus"][0]["id"] == product.skus[0]["id"]
+    assert "cost_price" not in item["skus"][0]
+    assert "reserved_quantity" not in item["skus"][0]
+
+
+def test_public_catalog_forwards_dynamic_characteristic_filter(client, db_session):
+    seller_id = str(uuid4())
+    common = {
+        "seller_id": seller_id,
+        "category_id": str(uuid4()),
+        "description": "Filtered",
+        "status": Product.Status.MODERATED,
+        "deleted": False,
+        "blocked": False,
+        "images": [],
+        "skus": [{"id": str(uuid4()), "sku_code": "FILTER", "price": 1000, "active_quantity": 1}],
+    }
+    matching = Product(id=str(uuid4()), title="Neo brand", slug="neo-brand", characteristics=[{"name": "brand", "value": "Neo"}], **common)
+    other = Product(id=str(uuid4()), title="Other brand", slug="other-brand", characteristics=[{"name": "brand", "value": "Other"}], **common)
+    db_session.add_all([matching, other])
+    db_session.commit()
+
+    response = client.get(
+        "/api/v1/public/products?filters[brand]=Neo",
+        headers={"X-Service-Key": settings.B2C_TO_B2B_KEY},
+    )
+    ids = {item["id"] for item in response.json()["items"]}
+
+    assert matching.id in ids
+    assert other.id not in ids
+
+
+def test_similar_products_fallback_to_parent_category(client, db_session):
+    from src.models.category import Category
+
+    root = Category(id=str(uuid4()), name="Root", slug="root", parent_id=None, is_active=True)
+    child = Category(id=str(uuid4()), name="Child", slug="child", parent_id=root.id, is_active=True)
+    current = Product(
+        id=str(uuid4()), seller_id=str(uuid4()), category_id=child.id, title="Current", slug="current", description="Current",
+        status=Product.Status.MODERATED, deleted=False, blocked=False, images=[], characteristics=[],
+        skus=[{"id": str(uuid4()), "sku_code": "CURRENT", "price": 1000, "active_quantity": 1}],
+    )
+    parent_candidate = Product(
+        id=str(uuid4()), seller_id=str(uuid4()), category_id=root.id, title="Parent candidate", slug="parent-candidate", description="Fallback",
+        status=Product.Status.MODERATED, deleted=False, blocked=False, images=[], characteristics=[],
+        skus=[{"id": str(uuid4()), "sku_code": "PARENT", "price": 1200, "active_quantity": 1}],
+    )
+    db_session.add_all([root, child, current, parent_candidate])
+    db_session.commit()
+
+    response = client.get(
+        f"/api/v1/public/products/{current.id}/similar?limit=8",
+        headers={"X-Service-Key": settings.B2C_TO_B2B_KEY},
+    )
+
+    assert response.status_code == 200
+    assert parent_candidate.id in {item["id"] for item in response.json()}
+    assert current.id not in {item["id"] for item in response.json()}

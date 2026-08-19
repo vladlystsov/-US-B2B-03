@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -24,8 +24,19 @@ def require_b2c_service_key(x_service_key: Optional[str] = Header(None)) -> None
         )
 
 
+def _dynamic_filters(request: Request) -> dict[str, str]:
+    filters: dict[str, str] = {}
+    for key, value in request.query_params.multi_items():
+        if key.startswith("filters[") and key.endswith("]"):
+            name = key[len("filters["):-1]
+            if name:
+                filters[name] = value
+    return filters
+
+
 @router.get("")
 def list_public_products(
+    request: Request,
     db: Session = Depends(get_db),
     _: None = Depends(require_b2c_service_key),
     limit: int = Query(20, ge=1, le=100),
@@ -47,9 +58,12 @@ def list_public_products(
         price_min=min_price,
         price_max=max_price,
         seller_id=seller_id,
+        filters=_dynamic_filters(request),
     )
+    # The B2C catalog/facets flow consumes product characteristics and public SKUs
+    # from this exact list response, not from a separate seller-shaped projection.
     return {
-        "items": [service.format_public_short(product) for product in products],
+        "items": [service.format_public_product(product) for product in products],
         "total_count": total,
         "limit": limit,
         "offset": offset,
@@ -85,14 +99,12 @@ def get_public_similar_products(
     product_id: str,
     db: Session = Depends(get_db),
     _: None = Depends(require_b2c_service_key),
-    limit: int = Query(10, ge=1, le=50),
+    limit: int = Query(8, ge=1, le=20),
 ):
-    service = ProductService(db)
-    product = service.get_public_product(product_id)
-    if not product:
+    products = ProductService(db).get_public_similar_products(product_id, limit=limit)
+    if products is None:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Product not found"})
-    products, _ = service.get_catalog_products(limit=limit + 1, category=product["category_id"])
-    return [service.format_public_short(item) for item in products if str(item.id) != str(product_id)][:limit]
+    return products
 
 
 @sku_router.get("/{sku_id}")
