@@ -516,7 +516,7 @@ class ProductService:
         price_min: int = None,
         price_max: int = None,
         seller_id: str = None,
-        filters: dict[str, str] | None = None,
+        filters: dict[str, str | list[str]] | None = None,
     ) -> tuple[list[Product], int]:
         """B2C public catalog: moderated, non-deleted products with at least one available SKU."""
         query = self.db.query(Product).filter(
@@ -553,7 +553,7 @@ class ProductService:
         return visible[offset:offset + limit], total
 
     @staticmethod
-    def _matches_public_filters(product: Product, filters: dict[str, str]) -> bool:
+    def _matches_public_filters(product: Product, filters: dict[str, str | list[str]]) -> bool:
         """Match B2C deep-object filters against public product and SKU characteristics."""
         characteristics = list(product.characteristics or [])
         for sku in product.skus or []:
@@ -562,7 +562,11 @@ class ProductService:
             str(item.get("name") or item.get("slug") or "").lower(): str(item.get("value", "")).lower()
             for item in characteristics
         }
-        return all(normalized.get(str(name).lower()) == str(value).lower() for name, value in filters.items())
+        for name, expected in filters.items():
+            expected_values = expected if isinstance(expected, list) else [expected]
+            if normalized.get(str(name).lower()) not in {str(value).lower() for value in expected_values}:
+                return False
+        return True
 
     def _public_sku(self, product: Product, sku: dict) -> dict:
         image_url = sku.get("image")

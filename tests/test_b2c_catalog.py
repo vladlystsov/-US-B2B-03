@@ -305,3 +305,31 @@ def test_similar_products_fallback_to_parent_category(client, db_session):
     assert response.status_code == 200
     assert parent_candidate.id in {item["id"] for item in response.json()}
     assert current.id not in {item["id"] for item in response.json()}
+
+
+def test_public_catalog_accepts_multiple_values_for_one_attribute_filter(client, db_session):
+    common = {
+        "seller_id": str(uuid4()),
+        "category_id": str(uuid4()),
+        "description": "Repeated filter values",
+        "status": Product.Status.MODERATED,
+        "deleted": False,
+        "blocked": False,
+        "images": [],
+        "skus": [{"id": str(uuid4()), "sku_code": "MULTI", "price": 1000, "active_quantity": 1}],
+    }
+    apple = Product(id=str(uuid4()), title="Apple", slug="apple", characteristics=[{"name": "brand", "value": "apple"}], **common)
+    samsung = Product(id=str(uuid4()), title="Samsung", slug="samsung", characteristics=[{"name": "brand", "value": "samsung"}], **common)
+    other = Product(id=str(uuid4()), title="Other", slug="other", characteristics=[{"name": "brand", "value": "other"}], **common)
+    db_session.add_all([apple, samsung, other])
+    db_session.commit()
+
+    response = client.get(
+        "/api/v1/public/products?filters[brand]=apple&filters[brand]=samsung",
+        headers={"X-Service-Key": settings.B2C_TO_B2B_KEY},
+    )
+    ids = {item["id"] for item in response.json()["items"]}
+
+    assert apple.id in ids
+    assert samsung.id in ids
+    assert other.id not in ids

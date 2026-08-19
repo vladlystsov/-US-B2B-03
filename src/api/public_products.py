@@ -24,13 +24,20 @@ def require_b2c_service_key(x_service_key: Optional[str] = Header(None)) -> None
         )
 
 
-def _dynamic_filters(request: Request) -> dict[str, str]:
-    filters: dict[str, str] = {}
+def _dynamic_filters(request: Request) -> dict[str, str | list[str]]:
+    filters: dict[str, str | list[str]] = {}
     for key, value in request.query_params.multi_items():
         if key.startswith("filters[") and key.endswith("]"):
             name = key[len("filters["):-1]
-            if name:
+            if not name:
+                continue
+            current = filters.get(name)
+            if current is None:
                 filters[name] = value
+            elif isinstance(current, list):
+                current.append(value)
+            else:
+                filters[name] = [current, value]
     return filters
 
 
