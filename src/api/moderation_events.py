@@ -30,7 +30,7 @@ def handle_moderation_event(
     db: Session = Depends(get_db),
     x_service_key: str | None = Header(None, alias="X-Service-Key")
 ):
-    if not x_service_key or x_service_key != settings.MODERATION_SERVICE_KEY:
+    if not x_service_key or x_service_key != settings.MOD_TO_B2B_KEY:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing or invalid X-Service-Key"

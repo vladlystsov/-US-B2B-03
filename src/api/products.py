@@ -77,6 +77,7 @@ def get_products(
     offset: int = Query(0, ge=0),
     search: Optional[str] = None,
     status: Optional[str] = None,
+    include_deleted: bool = False,
 ):
     """Seller cabinet listing; public B2C catalog lives in api.public_products."""
     auth_header = request.headers.get("Authorization")
@@ -107,31 +108,28 @@ def get_products(
         offset=offset,
         status=status,
         search=search,
+        include_deleted=include_deleted,
     )
     return SellerProductsResponse(items=items, total_count=total, limit=limit, offset=offset)
 
 
 @router.get("/{product_id}", response_model=ProductDetailResponse)
-def get_product(
+async def get_product(
     product_id: UUID,
-    seller_id: UUID = Depends(get_current_seller_id),
+    request: Request,
     db: Session = Depends(get_db),
-    x_service_key: Optional[str] = Header(None)
+    x_service_key: Optional[str] = Header(None),
 ):
     service = ProductService(db)
-
-    is_b2c_mode = x_service_key == settings.B2C_SERVICE_KEY if x_service_key else False
-
-    product = service.get_product_by_id(
-        str(product_id),
-        str(seller_id),
-        is_b2c_mode=is_b2c_mode
-    )
+    if x_service_key == settings.MOD_TO_B2B_KEY:
+        product = service.get_product_for_moderation(str(product_id))
+    else:
+        seller_id = await get_current_seller_id(request)
+        product = service.get_product_by_id(str(product_id), str(seller_id), is_b2c_mode=False)
 
     if not product:
         raise HTTPException(
             status_code=404,
-            detail={"code": "NOT_FOUND", "message": "Product not found"}
+            detail={"code": "NOT_FOUND", "message": "Product not found"},
         )
-
     return product

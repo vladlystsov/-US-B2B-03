@@ -101,8 +101,8 @@ class TestSellerProductsList:
         assert "My Product" in titles
         assert "Their Product" not in titles
 
-    def test_deleted_products_visible_with_deleted_flag(self, client, db_session, valid_jwt_with_fixed_id):
-        """Deleted products are visible with deleted=true"""
+    def test_deleted_products_are_hidden_by_default_and_visible_when_requested(self, client, db_session, valid_jwt_with_fixed_id):
+        """Deleted products are hidden unless include_deleted=true."""
         token, seller_id = valid_jwt_with_fixed_id
 
         active_product = Product(
@@ -142,10 +142,16 @@ class TestSellerProductsList:
         )
 
         assert response.status_code == 200
-        data = response.json()
-        titles = [item["title"] for item in data["items"]]
+        titles = [item["title"] for item in response.json()["items"]]
         assert "Active Product" in titles
-        assert "Deleted Product" in titles
+        assert "Deleted Product" not in titles
+
+        with_deleted = client.get(
+            "/api/v1/products?include_deleted=true",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert with_deleted.status_code == 200
+        assert "Deleted Product" in [item["title"] for item in with_deleted.json()["items"]]
 
     def test_status_filter_works_correctly(self, client, db_session, valid_jwt_with_fixed_id):
         """?status=BLOCKED returns only BLOCKED products"""
@@ -224,8 +230,8 @@ class TestSellerProductsList:
         assert len(data["items"]) >= 1
         assert data["items"][0]["title"] == "iPhone 15 Pro"
 
-    def test_response_includes_skus_count_and_total_active_quantity(self, client, db_session, valid_jwt_with_fixed_id):
-        """Response includes skus_count and total_active_quantity"""
+    def test_response_matches_product_short_contract(self, client, db_session, valid_jwt_with_fixed_id):
+        """Response uses ProductShortResponse fields, including min_price and cover_image."""
         token, seller_id = valid_jwt_with_fixed_id
 
         sku_id_1 = str(uuid4())
@@ -253,7 +259,7 @@ class TestSellerProductsList:
         db_session.commit()
 
         response = client.get(
-            "/api/v1/products",
+            "/api/v1/products?limit=100",
             headers={"Authorization": f"Bearer {token}"}
         )
 
@@ -267,5 +273,10 @@ class TestSellerProductsList:
                 break
 
         assert target_item is not None
-        assert target_item["skus_count"] == 2
-        assert target_item["total_active_quantity"] == 15
+        assert target_item["slug"] == "with-skus"
+        assert target_item["category_id"] == product.category_id
+        assert target_item["deleted"] is False
+        assert target_item["min_price"] == 10000
+        assert target_item["cover_image"] is None
+        assert "skus_count" not in target_item
+        assert "total_active_quantity" not in target_item

@@ -1,3 +1,4 @@
+import httpx
 from sqlalchemy.orm import Session
 from src.models.b2c_cascade_outbox import B2CCascadeOutbox
 from src.config import settings
@@ -14,13 +15,19 @@ class B2CDispatcher:
 
         for event in events:
             try:
-                import httpx
                 with httpx.Client() as client:
-                    client.post(
-                        f"{self.base_url}/api/v1/events/product_blocked",
-                        json=event.payload,
-                        timeout=5.0
+                    response = client.post(
+                        f"{self.base_url}/api/v1/b2b/events",
+                        json={
+                            "event_type": event.event_type,
+                            "idempotency_key": event.id,
+                            "occurred_at": event.payload["occurred_at"],
+                            "payload": event.payload,
+                        },
+                        headers={"X-Service-Key": settings.B2B_TO_B2C_KEY},
+                        timeout=5.0,
                     )
+                    response.raise_for_status()
                 event.status = "sent"
             except Exception:
                 event.status = "failed"
