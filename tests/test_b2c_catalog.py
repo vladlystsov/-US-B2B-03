@@ -117,12 +117,20 @@ class TestB2CCatalog:
 
         assert response.status_code == 200
         data = response.json()
-        for item in data["items"]:
-            if item["title"] == "Secret Product":
-                for sku in item["skus"]:
-                    assert "cost_price" not in sku
-                    assert "reserved_quantity" not in sku
-                break
+        item = next(item for item in data["items"] if item["title"] == "Secret Product")
+        assert item["min_price"] == 50000
+        assert "cost_price" not in item
+        assert "reserved_quantity" not in item
+
+        detail = client.post(
+            "/api/v1/public/products/batch",
+            json={"product_ids": [str(product.id)]},
+            headers={"X-Service-Key": settings.B2C_TO_B2B_KEY},
+        )
+        assert detail.status_code == 200
+        sku = detail.json()[0]["skus"][0]
+        assert "cost_price" not in sku
+        assert "reserved_quantity" not in sku
 
     def test_batch_ids_returns_visible_subset(self, client, db_session):
         """?ids= returns only visible products, no 404 for hidden ones"""
@@ -184,15 +192,14 @@ class TestB2CCatalog:
         db_session.add_all([visible_product, hidden_product, deleted_product])
         db_session.commit()
 
-        ids_param = f"{visible_product.id},{hidden_product.id},{deleted_product.id}"
-        response = client.get(
-            f"/api/v1/public/products?ids={ids_param}",
-            headers={"X-Service-Key": settings.B2C_SERVICE_KEY}
+        response = client.post(
+            "/api/v1/public/products/batch",
+            json={"product_ids": [str(visible_product.id), str(hidden_product.id), str(deleted_product.id)]},
+            headers={"X-Service-Key": settings.B2C_TO_B2B_KEY},
         )
 
         assert response.status_code == 200
-        data = response.json()
-        returned_ids = [item["id"] for item in data["items"]]
+        returned_ids = [item["id"] for item in response.json()]
         assert str(visible_product.id) in returned_ids
         assert str(hidden_product.id) not in returned_ids
         assert str(deleted_product.id) not in returned_ids

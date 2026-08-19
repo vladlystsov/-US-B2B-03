@@ -415,6 +415,11 @@ class ProductService:
 
         return items, total
     
+    def get_product_for_moderation(self, product_id: str) -> dict | None:
+        """Service-only snapshot for Moderation, protected by MOD_TO_B2B_KEY at the API boundary."""
+        product = self.db.query(Product).filter(Product.id == product_id, Product.deleted.is_(False)).first()
+        return self._format_for_seller(product) if product else None
+
     def get_product_by_id(self, product_id: str, seller_id: str, is_b2c_mode: bool = False) -> dict | None:
         """Получить товар с учётом режима доступа"""
         product = self.db.query(Product).filter(Product.id == product_id).first()
@@ -506,42 +511,99 @@ class ProductService:
         category: str = None,
         search: str = None,
         sort: str = None,
-        ids: list[str] = None
-    ) -> tuple[list[dict], int]:
-        """B2C catalog: only MODERATED, not deleted, at least one SKU with active_quantity > 0"""
+        ids: list[str] = None,
+        price_min: int = None,
+        price_max: int = None,
+        seller_id: str = None,
+    ) -> tuple[list[Product], int]:
+        """B2C public catalog: moderated, non-deleted products with at least one available SKU."""
         query = self.db.query(Product).filter(
             Product.status == Product.Status.MODERATED,
-            Product.deleted == False
+            Product.deleted.is_(False),
         )
 
         if ids:
             query = query.filter(Product.id.in_(ids))
-
         if category:
             query = query.filter(Product.category_id == category)
-
+        if seller_id:
+            query = query.filter(Product.seller_id == seller_id)
         if search:
             search_filter = f"%{search}%"
-            query = query.filter(
-                (Product.title.ilike(search_filter)) |
-                (Product.description.ilike(search_filter))
-            )
+            query = query.filter((Product.title.ilike(search_filter)) | (Product.description.ilike(search_filter)))
 
-        all_products = query.all()
-
-        visible = [p for p in all_products if self._has_active_sku(p)]
+        visible = [product for product in query.all() if self._has_active_sku(product)]
+        if price_min is not None:
+            visible = [product for product in visible if self._min_sku_price(product) >= price_min]
+        if price_max is not None:
+            visible = [product for product in visible if self._min_sku_price(product) <= price_max]
 
         if sort == "price_asc":
-            visible.sort(key=lambda p: self._min_sku_price(p))
+            visible.sort(key=self._min_sku_price)
         elif sort == "price_desc":
-            visible.sort(key=lambda p: self._min_sku_price(p), reverse=True)
-        elif sort == "date_desc":
-            visible.sort(key=lambda p: p.created_at or "", reverse=True)
+            visible.sort(key=self._min_sku_price, reverse=True)
+        elif sort in {"created_desc", "date_desc", "popular", None}:
+            visible.sort(key=lambda product: product.created_at or "", reverse=True)
 
         total = len(visible)
-        paginated = visible[offset:offset + limit]
+        return visible[offset:offset + limit], total
 
-        return paginated, total
+    def _public_sku(self, product: Product, sku: dict) -> dict:
+        image_url = sku.get("image")
+        return {
+            "id": sku.get("id"),
+            "product_id": product.id,
+            "name": sku.get("name") or sku.get("sku_code") or "SKU",
+            "price": sku.get("price", 0),
+            "discount": sku.get("discount", 0),
+            "stock_quantity": sku.get("stock_quantity", sku.get("active_quantity", 0)),
+            "active_quantity": sku.get("active_quantity", 0),
+            "article": sku.get("article") or sku.get("sku_code"),
+            "images": ([{"url": image_url, "ordering": 0}] if image_url else []),
+            "characteristics": sku.get("characteristics", []),
+        }
+
+    def format_public_product(self, product: Product) -> dict:
+        return {
+            "id": product.id,
+            "seller_id": product.seller_id,
+            "category_id": product.category_id,
+            "title": product.title,
+            "slug": product.slug,
+            "description": product.description,
+            "status": product.status,
+            "images": product.images or [],
+            "characteristics": product.characteristics or [],
+            "skus": [self._public_sku(product, sku) for sku in (product.skus or []) if sku.get("active_quantity", 0) > 0],
+            "created_at": product.created_at,
+            "updated_at": product.updated_at,
+        }
+
+    def format_public_short(self, product: Product) -> dict:
+        images = product.images or []
+        cover_image = min(images, key=lambda image: image.get("ordering", 0)).get("url") if images else None
+        return {
+            "id": product.id,
+            "title": product.title,
+            "slug": product.slug,
+            "status": product.status,
+            "category_id": product.category_id,
+            "min_price": self._min_sku_price(product),
+            "cover_image": cover_image,
+            "created_at": product.created_at,
+        }
+
+    def get_public_product(self, product_id: str) -> dict | None:
+        products, _ = self.get_catalog_products(limit=1, ids=[product_id])
+        return self.format_public_product(products[0]) if products else None
+
+    def get_public_sku(self, sku_id: str) -> dict | None:
+        products, _ = self.get_catalog_products(limit=100)
+        for product in products:
+            for sku in product.skus or []:
+                if str(sku.get("id")) == str(sku_id) and sku.get("active_quantity", 0) > 0:
+                    return self._public_sku(product, sku)
+        return None
 
     def _min_sku_price(self, product: Product) -> float:
         """Get minimum price from active SKUs"""

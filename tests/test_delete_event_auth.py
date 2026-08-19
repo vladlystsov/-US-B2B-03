@@ -30,6 +30,6 @@ def test_product_deleted_cascades_include_receiver_service_keys(monkeypatch):
     event_service.send_product_deleted_to_b2c("product-1", ["sku-1"])
 
     assert len(calls) == 2
-    assert calls[0][1]["headers"] == {"X-Service-Key": settings.MODERATION_SERVICE_KEY}
-    assert calls[1][1]["headers"] == {"X-Service-Key": settings.B2C_SERVICE_KEY}
+    assert calls[0][1]["headers"] == {"X-Service-Key": settings.B2B_TO_MOD_KEY}
+    assert calls[1][1]["headers"] == {"X-Service-Key": settings.B2B_TO_B2C_KEY}
     assert calls[1][1]["json"]["payload"]["sku_ids"] == ["sku-1"]

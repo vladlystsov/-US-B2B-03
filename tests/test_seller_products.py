@@ -259,7 +259,7 @@ class TestSellerProductsList:
         db_session.commit()
 
         response = client.get(
-            "/api/v1/products",
+            "/api/v1/products?limit=100",
             headers={"Authorization": f"Bearer {token}"}
         )
 

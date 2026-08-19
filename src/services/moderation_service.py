@@ -63,12 +63,13 @@ def apply_moderation_decision(
 
 
 def _emit_b2c_cascade(db: Session, product_id: str, payload: ModerationEventRequest):
+    product = db.query(Product).filter(Product.id == product_id).first()
     cascade_payload = {
         "product_id": product_id,
-        "event_type": "PRODUCT_BLOCKED",
+        "sku_ids": [sku.get("id") for sku in (product.skus or []) if sku.get("id")],
         "hard_block": payload.hard_block,
         "blocking_reason_id": payload.blocking_reason_id,
-        "occurred_at": payload.occurred_at.isoformat()
+        "occurred_at": payload.occurred_at.isoformat(),
     }
     db.add(B2CCascadeOutbox(
         id=str(uuid.uuid4()),

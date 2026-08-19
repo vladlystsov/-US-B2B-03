@@ -24,6 +24,7 @@ def send_edited_event(product_id: str, seller_id: str, changes: dict, old_data: 
                         "json_after": changes
                     }
                 },
+                headers={"X-Service-Key": settings.B2B_TO_MOD_KEY},
                 timeout=5.0
             )
             response.raise_for_status()
@@ -46,7 +47,7 @@ def send_deleted_event(product_id: str, seller_id: str) -> None:
                         "product_id": str(product_id)
                     }
                 },
-                headers={"X-Service-Key": settings.MODERATION_SERVICE_KEY},
+                headers={"X-Service-Key": settings.B2B_TO_MOD_KEY},
                 timeout=5.0
             )
             response.raise_for_status()
@@ -70,7 +71,7 @@ def send_product_deleted_to_b2c(product_id: str, sku_ids: list) -> None:
                         "sku_ids": sku_ids
                     }
                 },
-                headers={"X-Service-Key": settings.B2C_SERVICE_KEY},
+                headers={"X-Service-Key": settings.B2B_TO_B2C_KEY},
                 timeout=5.0
             )
             response.raise_for_status()
@@ -95,6 +96,7 @@ def send_created_event(product_id: str, seller_id: str, sku: dict) -> None:
                         "sku": sku
                     }
                 },
+                headers={"X-Service-Key": settings.B2B_TO_MOD_KEY},
                 timeout=5.0
             )
             response.raise_for_status()
@@ -115,6 +117,7 @@ def send_event_to_b2c(event_type: str, payload: dict) -> None:
                     "occurred_at": datetime.utcnow().isoformat(),
                     "payload": payload
                 },
+                headers={"X-Service-Key": settings.B2B_TO_B2C_KEY},
                 timeout=5.0
             )
             response.raise_for_status()

@@ -18,6 +18,7 @@ register_exception_handlers(app)
 
 app.include_router(products.router)
 app.include_router(public_products.router)
+app.include_router(public_products.sku_router)
 app.include_router(skus.router)
 app.include_router(invoices.router)
 app.include_router(inventory.router)
