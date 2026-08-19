@@ -377,12 +377,13 @@ class ProductService:
         limit: int = 20,
         offset: int = 0,
         status: str = None,
-        search: str = None
+        search: str = None,
+        include_deleted: bool = False,
     ) -> tuple[list[dict], int]:
-        """Seller cabinet: all statuses, including deleted, with skus_count and total_active_quantity"""
-        query = self.db.query(Product).filter(
-            Product.seller_id == seller_id
-        )
+        """Contract seller list: deleted products are opt-in and items use ProductShortResponse."""
+        query = self.db.query(Product).filter(Product.seller_id == seller_id)
+        if not include_deleted:
+            query = query.filter(Product.deleted.is_(False))
 
         if status:
             query = query.filter(Product.status == status)
@@ -397,16 +398,19 @@ class ProductService:
         items = []
         for p in products:
             skus = p.skus or []
+            prices = [sku.get("price") for sku in skus if sku.get("price") is not None]
+            images = p.images or []
+            cover = min(images, key=lambda image: image.get("ordering", 0)).get("url") if images else None
             items.append({
                 "id": p.id,
                 "title": p.title,
+                "slug": p.slug,
                 "status": p.status,
-                "category": self._format_category(p),
-                "images": p.images,
-                "characteristics": p.characteristics,
-                "skus_count": len(skus),
-                "total_active_quantity": sum(sku.get("active_quantity", 0) for sku in skus),
-                "created_at": p.created_at
+                "category_id": p.category_id,
+                "deleted": p.deleted,
+                "created_at": p.created_at,
+                "min_price": min(prices) if prices else None,
+                "cover_image": cover,
             })
 
         return items, total

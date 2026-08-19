@@ -1,18 +1,20 @@
-from pydantic import BaseModel, Field
-from typing import List, Optional, Any
-from uuid import UUID
 from datetime import datetime
+from typing import List, Optional
+from uuid import UUID
+
+from pydantic import BaseModel
 
 
 class SellerProductItem(BaseModel):
     id: UUID
     title: str
+    slug: str
     status: str
-    category: Optional[dict] = None
-    images: List[Any] = []
-    skus_count: int = 0
-    total_active_quantity: int = 0
-    created_at: Optional[datetime] = None
+    category_id: UUID
+    deleted: bool
+    created_at: datetime
+    min_price: Optional[int] = None
+    cover_image: Optional[str] = None
 
 
 class SellerProductsResponse(BaseModel):

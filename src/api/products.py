@@ -77,6 +77,7 @@ def get_products(
     offset: int = Query(0, ge=0),
     search: Optional[str] = None,
     status: Optional[str] = None,
+    include_deleted: bool = False,
 ):
     """Seller cabinet listing; public B2C catalog lives in api.public_products."""
     auth_header = request.headers.get("Authorization")
@@ -107,6 +108,7 @@ def get_products(
         offset=offset,
         status=status,
         search=search,
+        include_deleted=include_deleted,
     )
     return SellerProductsResponse(items=items, total_count=total, limit=limit, offset=offset)
 
