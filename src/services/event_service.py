@@ -46,6 +46,7 @@ def send_deleted_event(product_id: str, seller_id: str) -> None:
                         "product_id": str(product_id)
                     }
                 },
+                headers={"X-Service-Key": settings.MODERATION_SERVICE_KEY},
                 timeout=5.0
             )
             response.raise_for_status()
@@ -69,6 +70,7 @@ def send_product_deleted_to_b2c(product_id: str, sku_ids: list) -> None:
                         "sku_ids": sku_ids
                     }
                 },
+                headers={"X-Service-Key": settings.B2C_SERVICE_KEY},
                 timeout=5.0
             )
             response.raise_for_status()
