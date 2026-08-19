@@ -106,7 +106,7 @@ def get_public_similar_products(
     product_id: str,
     db: Session = Depends(get_db),
     _: None = Depends(require_b2c_service_key),
-    limit: int = Query(8, ge=1, le=20),
+    limit: int = Query(10, ge=1, le=50),
 ):
     products = ProductService(db).get_public_similar_products(product_id, limit=limit)
     if products is None:

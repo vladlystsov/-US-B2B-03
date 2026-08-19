@@ -623,7 +623,7 @@ class ProductService:
         product = self.get_public_product(product_id)
         if not product:
             return None
-        requested_limit = min(limit, 20)
+        requested_limit = min(limit, 50)
         same_category, _ = self.get_catalog_products(limit=100, category=product["category_id"])
         selected = [item for item in same_category if str(item.id) != str(product_id)]
         if len(selected) < requested_limit:
