@@ -60,10 +60,10 @@ def list_public_products(
         seller_id=seller_id,
         filters=_dynamic_filters(request),
     )
-    # The B2C catalog/facets flow consumes product characteristics and public SKUs
-    # from this exact list response, not from a separate seller-shaped projection.
+    # OpenAPI разделяет короткую форму листинга и полную форму batch/detail.
+    # B2C обогащает фасеты полной формой через канонический batch endpoint.
     return {
-        "items": [service.format_public_product(product) for product in products],
+        "items": [service.format_public_short(product) for product in products],
         "total_count": total,
         "limit": limit,
         "offset": offset,

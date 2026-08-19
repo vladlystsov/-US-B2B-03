@@ -234,11 +234,22 @@ def test_public_catalog_list_includes_characteristics_and_public_skus(client, db
     item = next(item for item in response.json()["items"] if item["id"] == product.id)
 
     assert response.status_code == 200
-    assert item["description"] == product.description
-    assert item["characteristics"] == [{"name": "brand", "value": "Neo"}]
-    assert item["skus"][0]["id"] == product.skus[0]["id"]
-    assert "cost_price" not in item["skus"][0]
-    assert "reserved_quantity" not in item["skus"][0]
+    assert set(item) >= {"id", "title", "slug", "status", "category_id", "min_price", "created_at"}
+    assert "description" not in item
+    assert "characteristics" not in item
+    assert "skus" not in item
+
+    batch = client.post(
+        "/api/v1/public/products/batch",
+        json={"product_ids": [product.id]},
+        headers={"X-Service-Key": settings.B2C_TO_B2B_KEY},
+    )
+    full_item = batch.json()[0]
+    assert full_item["description"] == product.description
+    assert full_item["characteristics"] == [{"name": "brand", "value": "Neo"}]
+    assert full_item["skus"][0]["id"] == product.skus[0]["id"]
+    assert "cost_price" not in full_item["skus"][0]
+    assert "reserved_quantity" not in full_item["skus"][0]
 
 
 def test_public_catalog_forwards_dynamic_characteristic_filter(client, db_session):
