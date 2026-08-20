@@ -51,9 +51,12 @@ class InvoiceService:
                 raise ValueError(f"SKU {sku_id} not found in product {product.id}")
             
             validated_items.append({
+                "id": str(uuid4()),
                 "sku_id": sku_id,
                 "quantity": quantity,
-                "accepted_quantity": None
+                # До приёмки фактически принято ноль; поле по контракту всегда
+                # числовое, а не nullable.
+                "accepted_quantity": 0,
             })
         
         now = datetime.now(timezone.utc)
