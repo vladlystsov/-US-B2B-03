@@ -32,9 +32,10 @@ class InvoiceStatusEnum(str, Enum):
     CANCELLED = "CANCELLED"
 
 class InvoiceItemResponse(BaseModel):
+    id: UUID
     sku_id: UUID
     quantity: int
-    accepted_quantity: Optional[int] = None
+    accepted_quantity: int = Field(..., ge=0)
 
 class InvoiceResponse(BaseModel):
     id: UUID

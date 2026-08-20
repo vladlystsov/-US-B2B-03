@@ -48,7 +48,8 @@ class TestInvoiceCreate:
         assert len(data["items"]) == 1
         assert data["items"][0]["sku_id"] == sku_id
         assert data["items"][0]["quantity"] == 5
-        assert data["items"][0]["accepted_quantity"] is None
+        assert data["items"][0]["accepted_quantity"] == 0
+        assert data["items"][0]["id"]
         
         invoice = db_session.query(Invoice).filter(Invoice.id == data["id"]).first()
         assert invoice is not None

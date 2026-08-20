@@ -292,7 +292,13 @@ class ProductService:
             raise HTTPException(status_code=404, detail="Product not found")
         
         if product.seller_id != seller_id:
-            raise HTTPException(status_code=403, detail="Access denied")
+            raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Access denied"})
+
+        if product.status == Product.Status.HARD_BLOCKED:
+            raise HTTPException(
+                status_code=403,
+                detail={"code": "HARD_BLOCKED", "message": "Hard-blocked product cannot be deleted"},
+            )
         
         if product.deleted:
             raise HTTPException(
@@ -569,7 +575,28 @@ class ProductService:
         return True
 
     def _public_sku(self, product: Product, sku: dict) -> dict:
-        image_url = sku.get("image")
+        raw_images = sku.get("images") or ([sku.get("image")] if sku.get("image") else [])
+        images = []
+        for index, raw_image in enumerate(raw_images):
+            if isinstance(raw_image, dict):
+                image_url = raw_image.get("url") or raw_image.get("image")
+                image_id = raw_image.get("id")
+                ordering = raw_image.get("ordering", index)
+            else:
+                image_url = raw_image
+                image_id = None
+                ordering = index
+            if not image_url:
+                continue
+            # Legacy SKU payloads stored an URL only. Public API always returns
+            # a UUID image identifier, so derive a stable UUID for those rows.
+            images.append(
+                {
+                    "id": str(image_id or uuid.uuid5(uuid.NAMESPACE_URL, f"{sku.get('id')}:{image_url}")),
+                    "url": image_url,
+                    "ordering": ordering,
+                }
+            )
         return {
             "id": sku.get("id"),
             "product_id": product.id,
@@ -579,7 +606,7 @@ class ProductService:
             "stock_quantity": sku.get("stock_quantity", sku.get("active_quantity", 0)),
             "active_quantity": sku.get("active_quantity", 0),
             "article": sku.get("article") or sku.get("sku_code"),
-            "images": ([{"url": image_url, "ordering": 0}] if image_url else []),
+            "images": images,
             "characteristics": sku.get("characteristics", []),
         }
 
