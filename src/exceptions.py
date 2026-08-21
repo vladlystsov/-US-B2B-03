@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
@@ -32,6 +33,16 @@ def register_exception_handlers(app: FastAPI):
             content={"code": "HTTP_ERROR", "message": str(exc.detail)}
         )
     
+    @app.exception_handler(RequestValidationError)
+    async def request_validation_error_handler(request: Request, exc: RequestValidationError):
+        # The invoice canon defines malformed invoice creation as a business-facing
+        # 400. Keep FastAPI's usual 422 semantics for the remaining endpoints.
+        invoice_creation = request.method == "POST" and request.url.path.rstrip("/") == "/api/v1/invoices"
+        return JSONResponse(
+            status_code=400 if invoice_creation else 422,
+            content={"code": "INVALID_REQUEST" if invoice_creation else "VALIDATION_ERROR", "message": str(exc.errors())},
+        )
+
     @app.exception_handler(ValidationError)
     async def validation_error_handler(request: Request, exc: ValidationError):
         return JSONResponse(
