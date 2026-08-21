@@ -55,3 +55,25 @@ def test_hard_blocked_product_cannot_be_deleted(db_session, valid_jwt_with_fixed
 
     assert error.value.status_code == 403
     assert error.value.detail["code"] == "HARD_BLOCKED"
+
+
+
+def test_public_sku_characteristics_have_complete_contract_shape(db_session, valid_jwt_with_fixed_id):
+    _, seller_id = valid_jwt_with_fixed_id
+    product = _product(seller_id)
+    sku = {
+        "id": str(uuid4()),
+        "sku_code": "SKU-CHARACTERISTIC",
+        "price": 1000,
+        "active_quantity": 2,
+        "characteristics": [{"name": "memory", "value": "256"}],
+    }
+
+    first = ProductService(db_session)._public_sku(product, sku)
+    second = ProductService(db_session)._public_sku(product, sku)
+
+    assert first["characteristics"] == second["characteristics"]
+    characteristic = first["characteristics"][0]
+    assert characteristic["name"] == "memory"
+    assert characteristic["value"] == "256"
+    UUID(characteristic["id"])

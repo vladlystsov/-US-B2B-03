@@ -607,7 +607,27 @@ class ProductService:
             "active_quantity": sku.get("active_quantity", 0),
             "article": sku.get("article") or sku.get("sku_code"),
             "images": images,
-            "characteristics": sku.get("characteristics", []),
+            "characteristics": [
+                {
+                    # SKU creation historically persisted name/value only. The
+                    # public contract requires CharacteristicResponse.id, so derive
+                    # a stable UUID for legacy entries while preserving supplied ids.
+                    "id": str(
+                        characteristic.get("id")
+                        or uuid.uuid5(
+                            uuid.NAMESPACE_URL,
+                            f"{sku.get('id')}:characteristic:{index}:"
+                            f"{characteristic.get('name')}:{characteristic.get('value')}",
+                        )
+                    ),
+                    "name": str(characteristic.get("name")),
+                    "value": str(characteristic.get("value")),
+                }
+                for index, characteristic in enumerate(sku.get("characteristics", []) or [])
+                if isinstance(characteristic, dict)
+                and characteristic.get("name") is not None
+                and characteristic.get("value") is not None
+            ],
         }
 
     def format_public_product(self, product: Product) -> dict:

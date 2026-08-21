@@ -66,7 +66,9 @@ class TestInvoiceCreate:
             headers={"Authorization": f"Bearer {token}"}
         )
         
-        assert response.status_code == 422
+        assert response.status_code == 400
+        assert response.json()["code"] == "INVALID_REQUEST"
+        assert "message" in response.json()
     
     def test_non_moderated_sku_returns_400(self, client, db_session, valid_jwt_with_fixed_id):
         """SKU не-MODERATED товара → 400"""
